@@ -104,10 +104,15 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
     )
 
     @app.get("/health")
-    async def health() -> dict[str, str | int]:
+    async def health() -> dict[str, str | int | bool]:
+        configured_count = sum(1 for item in descriptors.values() if item.source == "configured")
+        demo_count = sum(1 for item in descriptors.values() if item.source == "demo")
         return {
             "status": "ok",
             "provider_count": len(orchestrator.provider_names),
+            "configured_provider_count": configured_count,
+            "demo_provider_count": demo_count,
+            "demo_only": configured_count == 0,
         }
 
     @app.get("/api/providers")
