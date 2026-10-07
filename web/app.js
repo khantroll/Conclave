@@ -280,6 +280,10 @@ function renderResult(result, runId = null) {
     : "";
   $("arbiterPromptDetails").classList.toggle("hidden", !arbiter?.prompt);
   $("arbiterPrompt").textContent = arbiter?.prompt || "";
+  $("retryArbiter").classList.toggle(
+    "hidden",
+    !currentRunId || !arbiter || arbiter.status === "succeeded"
+  );
 
   const critic = result.critic;
   $("criticSection").classList.toggle("hidden", !critic);
@@ -288,6 +292,10 @@ function renderResult(result, runId = null) {
     : "";
   $("criticPromptDetails").classList.toggle("hidden", !critic?.prompt);
   $("criticPrompt").textContent = critic?.prompt || "";
+  $("retryCritic").classList.toggle(
+    "hidden",
+    !currentRunId || !critic || critic.status === "succeeded"
+  );
 
   $("delegatesSection").classList.remove("hidden");
   $("delegateCards").innerHTML = result.panel.delegates.map(d => {
@@ -329,6 +337,29 @@ async function retryDelegate(name, button) {
     renderResult(run.result, run.id);
     const cost = formatCost(run.result.estimated_cost_usd);
     $("status").textContent = `${name} retried; Critic and Arbiter refreshed.${cost ? " Estimated run cost " + cost + "." : ""}`;
+    await loadHistory();
+  } catch (error) {
+    $("status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function retryStage(stage, button) {
+  if (!currentRunId) return;
+  button.disabled = true;
+  $("status").textContent = stage === "critic"
+    ? "Retrying Critic, then refreshing Arbiter…"
+    : "Retrying Arbiter without rerunning the panel…";
+  try {
+    const run = await (await api(
+      `/api/runs/${currentRunId}/${stage}/retry`,
+      {method: "POST"}
+    )).json();
+    renderResult(run.result, run.id);
+    $("status").textContent = stage === "critic"
+      ? "Critic retried and Arbiter refreshed."
+      : "Arbiter retried.";
     await loadHistory();
   } catch (error) {
     $("status").textContent = error.message;
@@ -420,6 +451,8 @@ $("refreshHistory").addEventListener("click", loadHistory);
 $("analyzeButton").addEventListener("click", analyze);
 $("runButton").addEventListener("click", deliberate);
 $("downloadRun").addEventListener("click", downloadCurrentRun);
+$("retryCritic").addEventListener("click", event => retryStage("critic", event.currentTarget));
+$("retryArbiter").addEventListener("click", event => retryStage("arbiter", event.currentTarget));
 
 Promise.all([loadHealth(), loadProviders(), loadWorkspaces()]).catch(error => {
   $("status").textContent = error.message;
