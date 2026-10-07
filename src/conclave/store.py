@@ -12,6 +12,7 @@ from .models import (
     DeliberationRun,
     Workspace,
     WorkspaceCreate,
+    WorkspaceReplace,
 )
 
 
@@ -127,6 +128,53 @@ class WorkspaceStore:
                 ),
             )
         return workspace
+
+    def replace(self, workspace_id: str, request: WorkspaceReplace) -> Workspace | None:
+        existing = self.get(workspace_id)
+        if existing is None:
+            return None
+
+        updated = Workspace(
+            id=existing.id,
+            created_at=existing.created_at,
+            updated_at=_now(),
+            **request.model_dump(),
+        )
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE workspaces
+                SET name = ?, description = ?, context = ?, delegates_json = ?,
+                    roles_json = ?, critic = ?, arbiter = ?, minimum_successes = ?,
+                    auto_select_delegates = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    updated.name,
+                    updated.description,
+                    updated.context,
+                    json.dumps(updated.delegates),
+                    json.dumps(updated.roles),
+                    updated.critic,
+                    updated.arbiter,
+                    updated.minimum_successes,
+                    1 if updated.auto_select_delegates else 0,
+                    updated.updated_at,
+                    updated.id,
+                ),
+            )
+        return updated
+
+    def delete(self, workspace_id: str) -> bool:
+        if self.get(workspace_id) is None:
+            return False
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE deliberation_runs SET workspace_id = NULL WHERE workspace_id = ?",
+                (workspace_id,),
+            )
+            connection.execute("DELETE FROM workspaces WHERE id = ?", (workspace_id,))
+        return True
 
     def list(self) -> list[Workspace]:
         with self._connect() as connection:
