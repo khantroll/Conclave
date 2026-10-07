@@ -49,13 +49,40 @@ class DeliberationRequest(BaseModel):
     question: str = Field(min_length=1)
     delegates: list[str] = Field(min_length=1)
     arbiter: str = Field(min_length=1)
+    critic: str | None = None
     roles: dict[str, str] = Field(default_factory=dict)
     workspace_context: str | None = None
     minimum_successes: int = Field(default=1, ge=1)
     timeout_seconds: float = Field(default=60.0, gt=0)
+    critic_timeout_seconds: float = Field(default=60.0, gt=0)
     arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
 
 
 class DeliberationResult(BaseModel):
     panel: PanelResult
+    critic: DelegateResult | None = None
     arbiter: DelegateResult | None = None
+
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1)
+    description: str | None = None
+    context: str | None = None
+    delegates: list[str] = Field(min_length=1)
+    roles: dict[str, str] = Field(default_factory=dict)
+    critic: str | None = None
+    arbiter: str = Field(min_length=1)
+    minimum_successes: int = Field(default=1, ge=1)
+
+
+class Workspace(WorkspaceCreate):
+    id: str
+    created_at: str
+    updated_at: str
+
+
+class WorkspaceDeliberationRequest(BaseModel):
+    question: str = Field(min_length=1)
+    timeout_seconds: float = Field(default=60.0, gt=0)
+    critic_timeout_seconds: float = Field(default=60.0, gt=0)
+    arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
