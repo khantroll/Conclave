@@ -1,5 +1,3 @@
-import asyncio
-
 from conclave.models import DelegateRequest, DelegateStatus, PanelRequest
 from conclave.orchestrator import Orchestrator
 from conclave.providers.fake import FakeProvider
@@ -8,7 +6,11 @@ from conclave.providers.fake import FakeProvider
 async def test_panel_preserves_partial_success():
     orchestrator = Orchestrator(
         {
-            "good": FakeProvider("useful answer"),
+            "good": FakeProvider(
+                "useful answer",
+                model="good-model",
+                usage={"total_tokens": 12},
+            ),
             "bad": FakeProvider(error=RuntimeError("provider exploded")),
         }
     )
@@ -29,6 +31,8 @@ async def test_panel_preserves_partial_success():
     assert result.synthesizeable is True
     assert result.delegates[0].status == DelegateStatus.SUCCEEDED
     assert result.delegates[0].raw_response == "useful answer"
+    assert result.delegates[0].model == "good-model"
+    assert result.delegates[0].usage["total_tokens"] == 12
     assert result.delegates[1].status == DelegateStatus.FAILED
 
 
@@ -77,3 +81,13 @@ async def test_panel_can_require_more_successes():
     )
 
     assert result.synthesizeable is False
+
+
+def test_provider_names_are_sorted():
+    orchestrator = Orchestrator(
+        {
+            "zeta": FakeProvider(),
+            "alpha": FakeProvider(),
+        }
+    )
+    assert orchestrator.provider_names == ["alpha", "zeta"]
