@@ -93,6 +93,74 @@ class Orchestrator:
         )
         return DeliberationResult(panel=panel, critic=critic, arbiter=arbiter)
 
+    async def retry_delegate(
+        self,
+        *,
+        request: DeliberationRequest,
+        prior_result: DeliberationResult,
+        delegate_name: str,
+    ) -> DeliberationResult:
+        if delegate_name not in request.delegates:
+            raise ValueError(f"Delegate '{delegate_name}' was not part of the original request")
+
+        retry = await self._run_delegate(
+            DelegateRequest(
+                name=delegate_name,
+                prompt=build_delegate_prompt(
+                    question=request.question,
+                    role=request.roles.get(delegate_name),
+                    workspace_context=request.workspace_context,
+                ),
+                timeout_seconds=request.timeout_seconds,
+            )
+        )
+
+        delegates = [
+            retry if result.name == delegate_name else result
+            for result in prior_result.panel.delegates
+        ]
+        successful_count = sum(
+            result.status == DelegateStatus.SUCCEEDED for result in delegates
+        )
+        panel = PanelResult(
+            question=request.question,
+            delegates=delegates,
+            successful_count=successful_count,
+            failed_count=len(delegates) - successful_count,
+            synthesizeable=successful_count >= request.minimum_successes,
+        )
+
+        if not panel.synthesizeable:
+            return DeliberationResult(panel=panel)
+
+        critic: DelegateResult | None = None
+        if request.critic:
+            critic = await self._run_delegate(
+                DelegateRequest(
+                    name=request.critic,
+                    prompt=build_critic_prompt(
+                        question=request.question,
+                        delegate_results=panel.delegates,
+                        workspace_context=request.workspace_context,
+                    ),
+                    timeout_seconds=request.critic_timeout_seconds,
+                )
+            )
+
+        arbiter = await self._run_delegate(
+            DelegateRequest(
+                name=request.arbiter,
+                prompt=build_arbiter_prompt(
+                    question=request.question,
+                    delegate_results=panel.delegates,
+                    workspace_context=request.workspace_context,
+                    critic_result=critic,
+                ),
+                timeout_seconds=request.arbiter_timeout_seconds,
+            )
+        )
+        return DeliberationResult(panel=panel, critic=critic, arbiter=arbiter)
+
     async def _run_delegate(self, delegate: DelegateRequest) -> DelegateResult:
         provider = self._providers.get(delegate.name)
         if provider is None:
