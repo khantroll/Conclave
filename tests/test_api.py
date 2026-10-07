@@ -6,6 +6,13 @@ from conclave.store import WorkspaceStore
 client = TestClient(app)
 
 
+def test_web_console_is_served():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Conclave" in response.text
+    assert "/static/app.js" in response.text
+
+
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
