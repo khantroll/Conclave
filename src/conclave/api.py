@@ -4,11 +4,14 @@ import os
 
 from fastapi import FastAPI, HTTPException, Response
 
+from .analyzer import analyze_request
 from .config import load_config
 from .models import (
+    AnalyzeRequest,
     DeliberationRequest,
     DeliberationResult,
     DeliberationRun,
+    RequestAnalysis,
     PanelRequest,
     PanelResult,
     Workspace,
@@ -53,6 +56,10 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
     @app.get("/api/providers")
     async def provider_names() -> dict[str, list[str]]:
         return {"providers": orchestrator.provider_names}
+
+    @app.post("/api/analyze", response_model=RequestAnalysis)
+    async def analyze(request: AnalyzeRequest) -> RequestAnalysis:
+        return analyze_request(request.question)
 
     @app.post("/api/panel", response_model=PanelResult)
     async def run_panel(request: PanelRequest) -> PanelResult:
@@ -125,10 +132,37 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
         run = store.save_run(
             workspace_id=workspace.id,
             question=request.question,
+            request=deliberation,
             result=result,
         )
         response.headers["X-Conclave-Run-ID"] = run.id
         return result
+
+    @app.post("/api/runs/{run_id}/delegates/{delegate_name}/retry", response_model=DeliberationRun)
+    async def retry_delegate(run_id: str, delegate_name: str) -> DeliberationRun:
+        run = store.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Deliberation run not found")
+        if run.request is None:
+            raise HTTPException(
+                status_code=409,
+                detail="This run predates request snapshots and cannot be retried safely",
+            )
+        try:
+            result = await orchestrator.retry_delegate(
+                request=run.request,
+                prior_result=run.result,
+                delegate_name=delegate_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        return store.save_run(
+            workspace_id=run.workspace_id,
+            question=run.question,
+            request=run.request,
+            result=result,
+        )
 
     return app
 
