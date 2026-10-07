@@ -255,3 +255,40 @@ def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_pat
     deleted = workspace_client.delete(f"/api/workspaces/{workspace['id']}")
     assert deleted.status_code == 204
     assert workspace_client.get(f"/api/workspaces/{workspace['id']}").status_code == 404
+
+
+def test_downstream_retry_endpoints_save_new_runs(tmp_path):
+    store = WorkspaceStore(tmp_path / "downstream-retry.db")
+    workspace_app = create_app(workspace_store=store)
+    workspace_client = TestClient(workspace_app)
+
+    workspace = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Retry",
+            "delegates": ["demo-a"],
+            "critic": "demo-critic",
+            "arbiter": "demo-arbiter",
+        },
+    ).json()
+
+    first = workspace_client.post(
+        f"/api/workspaces/{workspace['id']}/deliberate",
+        json={"question": "retry downstream"},
+    )
+    run_id = first.headers["X-Conclave-Run-ID"]
+
+    critic_retry = workspace_client.post(f"/api/runs/{run_id}/critic/retry")
+    assert critic_retry.status_code == 200
+    critic_run = critic_retry.json()
+    assert critic_run["id"] != run_id
+    assert critic_run["result"]["critic"]["status"] == "succeeded"
+    assert critic_run["result"]["arbiter"]["status"] == "succeeded"
+
+    arbiter_retry = workspace_client.post(
+        f"/api/runs/{critic_run['id']}/arbiter/retry"
+    )
+    assert arbiter_retry.status_code == 200
+    arbiter_run = arbiter_retry.json()
+    assert arbiter_run["id"] != critic_run["id"]
+    assert arbiter_run["result"]["arbiter"]["status"] == "succeeded"
