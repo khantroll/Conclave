@@ -322,3 +322,32 @@ def test_deleted_workspace_run_remains_in_global_history(tmp_path):
     match = next(run for run in all_runs.json() if run["id"] == run_id)
     assert match["workspace_id"] is None
     assert match["question"] == "preserve me"
+
+
+def test_workspace_validation_rejects_duplicate_delegates_and_unknown_roles(tmp_path):
+    store = WorkspaceStore(tmp_path / "validation.db")
+    workspace_app = create_app(workspace_store=store)
+    workspace_client = TestClient(workspace_app)
+
+    duplicate = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Duplicate",
+            "delegates": ["demo-a", "demo-a"],
+            "arbiter": "demo-arbiter",
+        },
+    )
+    assert duplicate.status_code == 422
+    assert "unique" in duplicate.json()["detail"]
+
+    bad_role = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Bad role",
+            "delegates": ["demo-a"],
+            "roles": {"demo-b": "Not actually selected"},
+            "arbiter": "demo-arbiter",
+        },
+    )
+    assert bad_role.status_code == 422
+    assert "non-delegate" in bad_role.json()["detail"]
