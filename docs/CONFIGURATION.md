@@ -66,3 +66,8 @@ Conclave does not return API keys through its web API. Provider descriptors expo
 ## Local-only security assumption
 
 The pre-alpha has no multi-user authentication layer. Run it on localhost unless you intentionally place it behind your own authenticated reverse proxy. Workspace context, exact prompts, and model responses are persisted locally in SQLite and may contain sensitive material.
+
+
+## Restart required after provider changes
+
+Provider configuration is loaded when Conclave starts. After editing `conclave.json` or changing values in `.env`, restart the uvicorn process before using the provider test buttons. The web console shows whether Conclave is currently running in **demo only** mode or has real configured providers available.
