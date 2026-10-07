@@ -73,6 +73,7 @@ class WorkspaceCreate(BaseModel):
     critic: str | None = None
     arbiter: str = Field(min_length=1)
     minimum_successes: int = Field(default=1, ge=1)
+    auto_select_delegates: bool = False
 
 
 class Workspace(WorkspaceCreate):
@@ -107,9 +108,24 @@ class RequestComplexity(StrEnum):
 class RequestAnalysis(BaseModel):
     complexity: RequestComplexity
     recommended_delegate_count: int = Field(ge=1, le=4)
+    desired_capabilities: list[str] = Field(default_factory=list)
     signals: list[str] = Field(default_factory=list)
     rationale: str
 
 
 class AnalyzeRequest(BaseModel):
     question: str = Field(min_length=1)
+
+
+class ProviderDescriptor(BaseModel):
+    name: str
+    model: str | None = None
+    capabilities: list[str] = Field(default_factory=list)
+    priority: int = 100
+    source: str = "configured"
+
+
+class DelegateSelection(BaseModel):
+    analysis: RequestAnalysis
+    selected: list[str]
+    available: list[str]
