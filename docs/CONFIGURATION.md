@@ -4,6 +4,7 @@ Conclave separates **provider metadata** from **provider secrets**.
 
 - Provider definitions live in `conclave.json` (or the path named by `CONCLAVE_CONFIG_PATH`).
 - API keys stay in environment variables referenced by `api_key_env`.
+- A local `.env` file is loaded automatically and is ignored by Git.
 - Workspaces and run history live in SQLite at `CONCLAVE_DB_PATH`.
 
 ## Provider example
@@ -54,3 +55,14 @@ A provider entry may point directly to an OpenAI-compatible vendor API or to a g
 ## Connectivity test
 
 The web console exposes an explicit **Test** button for each configured provider. It sends a tiny request to that provider. This can incur a small API charge on paid endpoints.
+
+
+## Local .env support
+
+For a local single-user install, copy `.env.example` to `.env` and fill only the variables you actually use. Both `.env` and the local `conclave.json` are ignored by Git.
+
+Conclave does not return API keys through its web API. Provider descriptors expose model/capability/pricing metadata only.
+
+## Local-only security assumption
+
+The pre-alpha has no multi-user authentication layer. Run it on localhost unless you intentionally place it behind your own authenticated reverse proxy. Workspace context, exact prompts, and model responses are persisted locally in SQLite and may contain sensitive material.
