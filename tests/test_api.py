@@ -292,3 +292,33 @@ def test_downstream_retry_endpoints_save_new_runs(tmp_path):
     arbiter_run = arbiter_retry.json()
     assert arbiter_run["id"] != critic_run["id"]
     assert arbiter_run["result"]["arbiter"]["status"] == "succeeded"
+
+
+def test_deleted_workspace_run_remains_in_global_history(tmp_path):
+    store = WorkspaceStore(tmp_path / "detached-history.db")
+    workspace_app = create_app(workspace_store=store)
+    workspace_client = TestClient(workspace_app)
+
+    workspace = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Disposable",
+            "delegates": ["demo-a"],
+            "arbiter": "demo-arbiter",
+        },
+    ).json()
+
+    first = workspace_client.post(
+        f"/api/workspaces/{workspace['id']}/deliberate",
+        json={"question": "preserve me"},
+    )
+    run_id = first.headers["X-Conclave-Run-ID"]
+
+    deleted = workspace_client.delete(f"/api/workspaces/{workspace['id']}")
+    assert deleted.status_code == 204
+
+    all_runs = workspace_client.get("/api/runs")
+    assert all_runs.status_code == 200
+    match = next(run for run in all_runs.json() if run["id"] == run_id)
+    assert match["workspace_id"] is None
+    assert match["question"] == "preserve me"
