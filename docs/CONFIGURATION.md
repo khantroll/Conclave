@@ -71,3 +71,34 @@ The pre-alpha has no multi-user authentication layer. Run it on localhost unless
 ## Restart required after provider changes
 
 Provider configuration is loaded when Conclave starts. After editing `conclave.json` or changing values in `.env`, restart the uvicorn process before using the provider test buttons. The web console shows whether Conclave is currently running in **demo only** mode or has real configured providers available.
+
+
+## First real three-model panel
+
+The current generic OpenAI-compatible adapter can talk directly to all three of the first real providers:
+
+- **Gemini** via Google's OpenAI-compatible endpoint at `https://generativelanguage.googleapis.com/v1beta/openai`
+- **Mistral** via `https://api.mistral.ai/v1`
+- **Groq** via `https://api.groq.com/openai/v1`
+
+That means Conclave does not need separate native SDK adapters to begin real multi-model testing. `conclave.example.json` now includes working provider shapes for all three, plus optional OpenRouter and local-model examples.
+
+For a first real workspace, start with:
+
+- Delegates: `gemini, mistral, groq`
+- Critic: `mistral`
+- Arbiter: `gemini`
+- Minimum successes: `2`
+- Automatic subset selection: off for the first comparison run
+
+Suggested roles:
+
+```text
+gemini = Broad-context analyst. Explore alternatives and important external assumptions.
+mistral = Skeptical technical reviewer. Look for failure modes, scope creep, and weak reasoning.
+groq = Independent fast generalist. Solve the problem independently and challenge obvious consensus.
+```
+
+Once that fixed three-model path is proven, enable automatic delegate selection and let simpler questions use fewer models.
+
+Model availability can change. If a provider Test button reports a model-not-found error, update only that provider's `model` value in `conclave.json`, restart Conclave, and test again.
