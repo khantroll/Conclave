@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 
 let workspaces = [];
 let activeWorkspaceId = null;
+let editingWorkspaceId = null;
 let currentRunId = null;
 
 async function api(path, options = {}) {
@@ -33,8 +34,43 @@ async function loadProviders() {
         <span class="provider-detail">
           <strong>${escapeHtml(p.name)}</strong>
           <small>${escapeHtml((p.capabilities || []).join(", ") || "general")}</small>
+          <button class="secondary provider-test" data-name="${escapeHtml(p.name)}">Test</button>
         </span>`).join("")
-    : body.providers.map(p => `<span>${escapeHtml(p)}</span>`).join("");
+    : body.providers.map(p => `
+        <span class="provider-detail">
+          <strong>${escapeHtml(p)}</strong>
+          <button class="secondary provider-test" data-name="${escapeHtml(p)}">Test</button>
+        </span>`).join("");
+
+  document.querySelectorAll(".provider-test").forEach(button => {
+    button.addEventListener("click", () => testProvider(button.dataset.name, button));
+  });
+}
+
+async function testProvider(name, button) {
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent = "Testing…";
+  try {
+    const result = await (await api(
+      `/api/providers/${encodeURIComponent(name)}/test`,
+      {method: "POST"}
+    )).json();
+    button.textContent = result.status === "succeeded"
+      ? `OK ${result.latency_ms ?? ""}ms`
+      : result.status;
+    $("status").textContent = result.error
+      ? `${name}: ${result.error}`
+      : `${name} connected successfully.`;
+  } catch (error) {
+    button.textContent = "Failed";
+    $("status").textContent = `${name}: ${error.message}`;
+  } finally {
+    setTimeout(() => {
+      button.textContent = original;
+      button.disabled = false;
+    }, 2500);
+  }
 }
 
 async function loadWorkspaces() {
@@ -43,6 +79,7 @@ async function loadWorkspaces() {
   select.innerHTML = workspaces.length
     ? workspaces.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join("")
     : '<option value="">No workspaces yet</option>';
+
   if (activeWorkspaceId && workspaces.some(w => w.id === activeWorkspaceId)) {
     select.value = activeWorkspaceId;
   } else {
@@ -52,40 +89,116 @@ async function loadWorkspaces() {
   await loadHistory();
 }
 
-async function createWorkspace(event) {
-  event.preventDefault();
-  const delegates = $("workspaceDelegates").value.split(",").map(s => s.trim()).filter(Boolean);
-  const body = {
+function workspaceFormBody() {
+  return {
     name: $("workspaceName").value.trim(),
     description: $("workspaceDescription").value.trim() || null,
     context: $("workspaceContext").value.trim() || null,
-    delegates,
+    delegates: $("workspaceDelegates").value
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean),
     critic: $("workspaceCritic").value.trim() || null,
     arbiter: $("workspaceArbiter").value.trim(),
     minimum_successes: Number($("workspaceQuorum").value || 1),
     auto_select_delegates: $("workspaceAutoSelect").checked,
   };
-  const created = await (await api("/api/workspaces", {
-    method: "POST",
-    body: JSON.stringify(body),
-  })).json();
-  activeWorkspaceId = created.id;
-  event.target.reset();
+}
+
+async function saveWorkspace(event) {
+  event.preventDefault();
+  const body = workspaceFormBody();
+  try {
+    let workspace;
+    if (editingWorkspaceId) {
+      workspace = await (await api(`/api/workspaces/${editingWorkspaceId}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      })).json();
+    } else {
+      workspace = await (await api("/api/workspaces", {
+        method: "POST",
+        body: JSON.stringify(body),
+      })).json();
+    }
+    activeWorkspaceId = workspace.id;
+    resetWorkspaceForm();
+    await loadWorkspaces();
+    $("status").textContent = editingWorkspaceId
+      ? "Workspace updated."
+      : "Workspace created.";
+  } catch (error) {
+    $("status").textContent = error.message;
+  }
+}
+
+function beginWorkspaceEdit() {
+  const workspace = workspaces.find(w => w.id === activeWorkspaceId);
+  if (!workspace) {
+    $("status").textContent = "Select a workspace first.";
+    return;
+  }
+  editingWorkspaceId = workspace.id;
+  $("workspaceName").value = workspace.name;
+  $("workspaceDescription").value = workspace.description || "";
+  $("workspaceContext").value = workspace.context || "";
+  $("workspaceDelegates").value = workspace.delegates.join(", ");
+  $("workspaceCritic").value = workspace.critic || "";
+  $("workspaceArbiter").value = workspace.arbiter;
+  $("workspaceQuorum").value = String(workspace.minimum_successes);
+  $("workspaceAutoSelect").checked = Boolean(workspace.auto_select_delegates);
+  $("workspaceFormSummary").textContent = "Edit workspace";
+  $("workspaceSubmit").textContent = "Save changes";
+  $("workspaceCancel").classList.remove("hidden");
+  $("workspaceForm").closest("details").open = true;
+}
+
+function resetWorkspaceForm() {
+  editingWorkspaceId = null;
+  $("workspaceForm").reset();
   $("workspaceQuorum").value = "1";
-  await loadWorkspaces();
+  $("workspaceFormSummary").textContent = "Create workspace";
+  $("workspaceSubmit").textContent = "Create";
+  $("workspaceCancel").classList.add("hidden");
+}
+
+async function deleteWorkspace() {
+  const workspace = workspaces.find(w => w.id === activeWorkspaceId);
+  if (!workspace) {
+    $("status").textContent = "Select a workspace first.";
+    return;
+  }
+  if (!confirm(`Delete workspace "${workspace.name}"? Saved run history will be retained but detached from the workspace.`)) {
+    return;
+  }
+  try {
+    await api(`/api/workspaces/${workspace.id}`, {method: "DELETE"});
+    if (editingWorkspaceId === workspace.id) resetWorkspaceForm();
+    activeWorkspaceId = null;
+    currentRunId = null;
+    await loadWorkspaces();
+    $("status").textContent = "Workspace deleted; run history was preserved.";
+  } catch (error) {
+    $("status").textContent = error.message;
+  }
 }
 
 async function analyze() {
   const question = $("question").value.trim();
   if (!question) return;
+
   const body = await (await api("/api/analyze", {
     method: "POST",
     body: JSON.stringify({question}),
   })).json();
+
   $("complexity").textContent =
     `${body.complexity} · suggests ${body.recommended_delegate_count} delegate${body.recommended_delegate_count === 1 ? "" : "s"}`;
 
   let detail = body.rationale;
+  if (body.desired_capabilities?.length) {
+    detail += ` Desired capabilities: ${body.desired_capabilities.join(", ")}.`;
+  }
   if (activeWorkspaceId) {
     try {
       const selection = await (await api(`/api/workspaces/${activeWorkspaceId}/select`, {
@@ -94,7 +207,7 @@ async function analyze() {
       })).json();
       detail += ` Suggested delegates: ${selection.selected.join(", ")}.`;
     } catch {
-      // The generic analysis is still useful if workspace selection preview fails.
+      // Generic analysis remains useful if workspace preview is unavailable.
     }
   }
   $("status").textContent = detail;
@@ -120,8 +233,9 @@ async function deliberate() {
     });
     const result = await response.json();
     renderResult(result, response.headers.get("X-Conclave-Run-ID"));
+    const cost = formatCost(result.estimated_cost_usd);
     $("status").textContent = result.panel.synthesizeable
-      ? `${result.panel.successful_count} delegate(s) completed.`
+      ? `${result.panel.successful_count} delegate(s) completed.${cost ? " Estimated run cost " + cost + "." : ""}`
       : "Not enough delegates succeeded to synthesize.";
     await loadHistory();
   } catch (error) {
@@ -150,16 +264,18 @@ function renderResult(result, runId = null) {
   $("delegatesSection").classList.remove("hidden");
   $("delegateCards").innerHTML = result.panel.delegates.map(d => {
     const failed = d.status !== "succeeded";
-    const content = d.raw_response || d.error || d.status;
+    const body = d.raw_response || d.error || d.status;
     const timing = d.latency_ms == null ? "" : ` · ${d.latency_ms} ms`;
+    const cost = formatCost(d.estimated_cost_usd);
+    const costText = cost ? ` · ${cost}` : "";
     const retry = failed && currentRunId
       ? `<button class="secondary retry-delegate" data-name="${escapeHtml(d.name)}">Retry this delegate</button>`
       : "";
     return `
       <article class="delegate ${failed ? "failed" : ""}">
         <strong>${escapeHtml(d.name)}</strong>
-        <div class="meta">${escapeHtml(d.status)}${d.model ? " · " + escapeHtml(d.model) : ""}${timing}</div>
-        <pre>${escapeHtml(content)}</pre>
+        <div class="meta">${escapeHtml(d.status)}${d.model ? " · " + escapeHtml(d.model) : ""}${timing}${costText}</div>
+        <pre>${escapeHtml(body)}</pre>
         ${retry}
       </article>`;
   }).join("");
@@ -179,7 +295,8 @@ async function retryDelegate(name, button) {
       {method: "POST"}
     )).json();
     renderResult(run.result, run.id);
-    $("status").textContent = `${name} retried; Critic and Arbiter refreshed.`;
+    const cost = formatCost(run.result.estimated_cost_usd);
+    $("status").textContent = `${name} retried; Critic and Arbiter refreshed.${cost ? " Estimated run cost " + cost + "." : ""}`;
     await loadHistory();
   } catch (error) {
     $("status").textContent = error.message;
@@ -198,7 +315,7 @@ async function loadHistory() {
     ? runs.map(run => `
         <div class="history-item" data-run-id="${run.id}">
           <strong>${escapeHtml(run.question)}</strong>
-          <small>${new Date(run.created_at).toLocaleString()} · ${run.id.slice(0, 8)}</small>
+          <small>${new Date(run.created_at).toLocaleString()} · ${run.id.slice(0, 8)}${formatCost(run.result?.estimated_cost_usd) ? " · " + formatCost(run.result.estimated_cost_usd) : ""}</small>
         </div>`).join("")
     : "<p>No runs yet.</p>";
 
@@ -209,6 +326,13 @@ async function loadHistory() {
       renderResult(run.result, run.id);
     });
   });
+}
+
+function formatCost(value) {
+  if (value == null || Number.isNaN(Number(value))) return "";
+  const amount = Number(value);
+  if (amount < 0.01) return `$${amount.toFixed(5)}`;
+  return `$${amount.toFixed(3)}`;
 }
 
 function escapeHtml(value) {
@@ -222,9 +346,13 @@ function escapeHtml(value) {
 
 $("workspaceSelect").addEventListener("change", async (event) => {
   activeWorkspaceId = event.target.value || null;
+  currentRunId = null;
   await loadHistory();
 });
-$("workspaceForm").addEventListener("submit", createWorkspace);
+$("workspaceForm").addEventListener("submit", saveWorkspace);
+$("workspaceCancel").addEventListener("click", resetWorkspaceForm);
+$("editWorkspace").addEventListener("click", beginWorkspaceEdit);
+$("deleteWorkspace").addEventListener("click", deleteWorkspace);
 $("refreshWorkspaces").addEventListener("click", loadWorkspaces);
 $("refreshHistory").addEventListener("click", loadHistory);
 $("analyzeButton").addEventListener("click", analyze);
