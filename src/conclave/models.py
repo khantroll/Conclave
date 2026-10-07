@@ -29,6 +29,7 @@ class DelegateResult(BaseModel):
     error: str | None = None
     latency_ms: int | None = None
     usage: dict[str, Any] = Field(default_factory=dict)
+    estimated_cost_usd: float | None = None
 
 
 class PanelRequest(BaseModel):
@@ -62,6 +63,7 @@ class DeliberationResult(BaseModel):
     panel: PanelResult
     critic: DelegateResult | None = None
     arbiter: DelegateResult | None = None
+    estimated_cost_usd: float | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -80,6 +82,10 @@ class Workspace(WorkspaceCreate):
     id: str
     created_at: str
     updated_at: str
+
+
+class WorkspaceReplace(WorkspaceCreate):
+    pass
 
 
 class WorkspaceDeliberationRequest(BaseModel):
@@ -122,7 +128,17 @@ class ProviderDescriptor(BaseModel):
     model: str | None = None
     capabilities: list[str] = Field(default_factory=list)
     priority: int = 100
+    input_cost_per_million: float | None = None
+    output_cost_per_million: float | None = None
     source: str = "configured"
+
+
+class ProviderTestResult(BaseModel):
+    name: str
+    status: DelegateStatus
+    model: str | None = None
+    latency_ms: int | None = None
+    error: str | None = None
 
 
 class DelegateSelection(BaseModel):
