@@ -3,6 +3,7 @@ from conclave.models import (
     DeliberationResult,
     PanelResult,
     WorkspaceCreate,
+    WorkspaceReplace,
 )
 from conclave.store import WorkspaceStore
 
@@ -79,3 +80,50 @@ def test_workspace_store_returns_none_for_missing_id(tmp_path):
     store = WorkspaceStore(tmp_path / "workspaces.db")
     assert store.get("missing") is None
     assert store.get_run("missing") is None
+
+
+def test_workspace_replace_and_delete_preserve_run_history(tmp_path):
+    store = WorkspaceStore(tmp_path / "workspaces.db")
+    workspace = store.create(
+        WorkspaceCreate(
+            name="Original",
+            delegates=["a"],
+            arbiter="arbiter",
+        )
+    )
+    result = DeliberationResult(
+        panel=PanelResult(
+            question="q",
+            delegates=[],
+            successful_count=0,
+            failed_count=0,
+            synthesizeable=False,
+        )
+    )
+    run = store.save_run(
+        workspace_id=workspace.id,
+        question="q",
+        result=result,
+    )
+
+    updated = store.replace(
+        workspace.id,
+        WorkspaceReplace(
+            name="Renamed",
+            delegates=["a", "b"],
+            critic="critic",
+            arbiter="arbiter",
+            minimum_successes=1,
+            auto_select_delegates=True,
+        ),
+    )
+    assert updated is not None
+    assert updated.name == "Renamed"
+    assert updated.auto_select_delegates is True
+    assert updated.updated_at != workspace.updated_at
+
+    assert store.delete(workspace.id) is True
+    assert store.get(workspace.id) is None
+    preserved = store.get_run(run.id)
+    assert preserved is not None
+    assert preserved.workspace_id is None
