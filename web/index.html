@@ -35,6 +35,7 @@
           <label>Name<input id="workspaceName" required></label>
           <label>Description<input id="workspaceDescription"></label>
           <label>Context<textarea id="workspaceContext" rows="5"></textarea></label>
+          <button id="insertContextTemplate" type="button" class="secondary">Insert context template</button>
           <label>Delegates <small>comma-separated provider names</small>
             <input id="workspaceDelegates" placeholder="openai, claude, gemini" required>
           </label>
@@ -60,6 +61,15 @@
         <small>Connection tests send a tiny real request for configured API providers.</small>
         <div id="providerNotice" class="provider-notice"></div>
         <div id="providers" class="chips"></div>
+        <details class="provider-setup">
+          <summary>Set up real providers</summary>
+          <ol>
+            <li>Copy <code>conclave.example.json</code> to <code>conclave.json</code>.</li>
+            <li>Copy <code>.env.example</code> to <code>.env</code>.</li>
+            <li>Edit provider endpoints/models in <code>conclave.json</code> and put API keys only in <code>.env</code>.</li>
+            <li>Restart Conclave, then use the provider Test buttons.</li>
+          </ol>
+        </details>
       </section>
     </aside>
 
