@@ -228,3 +228,102 @@ async def test_delegate_result_preserves_exact_prompt():
     )
 
     assert result.delegates[0].prompt == prompt
+
+
+async def test_retry_critic_preserves_panel_and_refreshes_arbiter():
+    from conclave.models import DeliberationRequest, DeliberationResult, DelegateResult, PanelResult
+
+    orchestrator = Orchestrator(
+        {
+            "critic": FakeProvider("new critique"),
+            "arbiter": FakeProvider("new final"),
+        }
+    )
+    request = DeliberationRequest(
+        question="retry critic",
+        delegates=["delegate"],
+        critic="critic",
+        arbiter="arbiter",
+    )
+    prior = DeliberationResult(
+        panel=PanelResult(
+            question="retry critic",
+            delegates=[
+                DelegateResult(
+                    name="delegate",
+                    status=DelegateStatus.SUCCEEDED,
+                    prompt="delegate prompt",
+                    raw_response="delegate answer",
+                )
+            ],
+            successful_count=1,
+            failed_count=0,
+            synthesizeable=True,
+        ),
+        critic=DelegateResult(
+            name="critic",
+            status=DelegateStatus.FAILED,
+            prompt="old critic prompt",
+            error="temporary failure",
+        ),
+    )
+
+    result = await orchestrator.retry_critic(
+        request=request,
+        prior_result=prior,
+    )
+
+    assert result.panel.delegates[0].raw_response == "delegate answer"
+    assert result.critic is not None
+    assert result.critic.status == DelegateStatus.SUCCEEDED
+    assert result.critic.raw_response == "new critique"
+    assert result.arbiter is not None
+    assert result.arbiter.raw_response == "new final"
+
+
+async def test_retry_arbiter_preserves_panel_and_critic():
+    from conclave.models import DeliberationRequest, DeliberationResult, DelegateResult, PanelResult
+
+    orchestrator = Orchestrator({"arbiter": FakeProvider("new final")})
+    request = DeliberationRequest(
+        question="retry arbiter",
+        delegates=["delegate"],
+        critic="critic",
+        arbiter="arbiter",
+    )
+    critic = DelegateResult(
+        name="critic",
+        status=DelegateStatus.SUCCEEDED,
+        raw_response="keep critique",
+    )
+    prior = DeliberationResult(
+        panel=PanelResult(
+            question="retry arbiter",
+            delegates=[
+                DelegateResult(
+                    name="delegate",
+                    status=DelegateStatus.SUCCEEDED,
+                    raw_response="keep delegate",
+                )
+            ],
+            successful_count=1,
+            failed_count=0,
+            synthesizeable=True,
+        ),
+        critic=critic,
+        arbiter=DelegateResult(
+            name="arbiter",
+            status=DelegateStatus.FAILED,
+            error="temporary failure",
+        ),
+    )
+
+    result = await orchestrator.retry_arbiter(
+        request=request,
+        prior_result=prior,
+    )
+
+    assert result.panel.delegates[0].raw_response == "keep delegate"
+    assert result.critic is critic
+    assert result.arbiter is not None
+    assert result.arbiter.raw_response == "new final"
