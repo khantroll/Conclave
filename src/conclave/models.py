@@ -25,6 +25,7 @@ class DelegateResult(BaseModel):
     name: str
     status: DelegateStatus
     raw_response: str | None = None
+    model: str | None = None
     error: str | None = None
     latency_ms: int | None = None
     usage: dict[str, Any] = Field(default_factory=dict)
