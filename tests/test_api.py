@@ -45,6 +45,9 @@ def test_provider_names():
     assert "demo-b" in providers
     assert "demo-critic" in providers
     assert "demo-arbiter" in providers
+    descriptors = {item["name"]: item for item in response.json()["descriptors"]}
+    assert "reasoning" in descriptors["demo-a"]["capabilities"]
+    assert "critical" in descriptors["demo-b"]["capabilities"]
 
 
 def test_demo_deliberation_runs_panel_critic_and_arbiter():
@@ -150,3 +153,42 @@ def test_workspace_persists_defaults_run_and_history(tmp_path):
         f"/api/workspaces/{workspace['id']}/runs"
     )
     assert len(history_after_retry.json()) == 2
+
+
+def test_auto_select_workspace_uses_smaller_panel_for_simple_question(tmp_path):
+    store = WorkspaceStore(tmp_path / "auto-select.db")
+    workspace_app = create_app(workspace_store=store)
+    workspace_client = TestClient(workspace_app)
+
+    created = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Auto",
+            "delegates": ["demo-a", "demo-b"],
+            "critic": "demo-critic",
+            "arbiter": "demo-arbiter",
+            "minimum_successes": 1,
+            "auto_select_delegates": True,
+        },
+    )
+    assert created.status_code == 201
+    workspace = created.json()
+
+    preview = workspace_client.post(
+        f"/api/workspaces/{workspace['id']}/select",
+        json={"question": "What is RAID 10?"},
+    )
+    assert preview.status_code == 200
+    selection = preview.json()
+    assert selection["analysis"]["recommended_delegate_count"] == 1
+    assert selection["selected"] == ["demo-a"]
+
+    result = workspace_client.post(
+        f"/api/workspaces/{workspace['id']}/deliberate",
+        json={"question": "What is RAID 10?"},
+    )
+    assert result.status_code == 200
+    run_id = result.headers["X-Conclave-Run-ID"]
+
+    saved = workspace_client.get(f"/api/runs/{run_id}").json()
+    assert saved["request"]["delegates"] == ["demo-a"]
