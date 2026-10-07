@@ -14,6 +14,8 @@ from .models import (
     DeliberationRequest,
     DeliberationResult,
     DeliberationRun,
+    DelegateSelection,
+    ProviderDescriptor,
     RequestAnalysis,
     PanelRequest,
     PanelResult,
@@ -24,6 +26,7 @@ from .models import (
 from .orchestrator import Orchestrator
 from .providers.fake import FakeProvider
 from .providers.factory import build_providers
+from .selection import select_delegates
 from .store import WorkspaceStore
 
 
@@ -51,6 +54,46 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
         "demo-arbiter": FakeProvider("Synthesized demo response"),
         **configured,
     }
+    descriptors: dict[str, ProviderDescriptor] = {
+        "demo-a": ProviderDescriptor(
+            name="demo-a",
+            model="fake-model",
+            capabilities=["general", "reasoning"],
+            priority=50,
+            source="demo",
+        ),
+        "demo-b": ProviderDescriptor(
+            name="demo-b",
+            model="fake-model",
+            capabilities=["general", "critical"],
+            priority=60,
+            source="demo",
+        ),
+        "demo-critic": ProviderDescriptor(
+            name="demo-critic",
+            model="fake-model",
+            capabilities=["critical"],
+            priority=50,
+            source="demo",
+        ),
+        "demo-arbiter": ProviderDescriptor(
+            name="demo-arbiter",
+            model="fake-model",
+            capabilities=["reasoning", "general"],
+            priority=40,
+            source="demo",
+        ),
+        **{
+            item.name: ProviderDescriptor(
+                name=item.name,
+                model=item.model,
+                capabilities=item.capabilities or ["general"],
+                priority=item.priority,
+                source="configured",
+            )
+            for item in config.providers
+        },
+    }
     orchestrator = Orchestrator(providers)
     store = workspace_store or WorkspaceStore(
         os.getenv("CONCLAVE_DB_PATH", "conclave.db")
@@ -64,8 +107,15 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
         }
 
     @app.get("/api/providers")
-    async def provider_names() -> dict[str, list[str]]:
-        return {"providers": orchestrator.provider_names}
+    async def provider_names() -> dict[str, object]:
+        return {
+            "providers": orchestrator.provider_names,
+            "descriptors": [
+                descriptors[name].model_dump()
+                for name in orchestrator.provider_names
+                if name in descriptors
+            ],
+        }
 
     @app.post("/api/analyze", response_model=RequestAnalysis)
     async def analyze(request: AnalyzeRequest) -> RequestAnalysis:
@@ -97,6 +147,25 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Workspace not found")
         return workspace
 
+
+    @app.post(
+        "/api/workspaces/{workspace_id}/select",
+        response_model=DelegateSelection,
+    )
+    async def preview_workspace_selection(
+        workspace_id: str,
+        request: AnalyzeRequest,
+    ) -> DelegateSelection:
+        workspace = store.get(workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        analysis = analyze_request(request.question)
+        return select_delegates(
+            analysis=analysis,
+            candidates=workspace.delegates,
+            descriptors=descriptors,
+        )
+
     @app.get(
         "/api/workspaces/{workspace_id}/runs",
         response_model=list[DeliberationRun],
@@ -126,14 +195,23 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
         if workspace is None:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
+        delegates = workspace.delegates
+        if workspace.auto_select_delegates:
+            selection = select_delegates(
+                analysis=analyze_request(request.question),
+                candidates=workspace.delegates,
+                descriptors=descriptors,
+            )
+            delegates = selection.selected
+
         deliberation = DeliberationRequest(
             question=request.question,
-            delegates=workspace.delegates,
+            delegates=delegates,
             arbiter=workspace.arbiter,
             critic=workspace.critic,
-            roles=workspace.roles,
+            roles={name: workspace.roles[name] for name in delegates if name in workspace.roles},
             workspace_context=workspace.context,
-            minimum_successes=workspace.minimum_successes,
+            minimum_successes=min(workspace.minimum_successes, len(delegates)),
             timeout_seconds=request.timeout_seconds,
             critic_timeout_seconds=request.critic_timeout_seconds,
             arbiter_timeout_seconds=request.arbiter_timeout_seconds,
