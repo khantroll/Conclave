@@ -33,6 +33,7 @@ async function loadProviders() {
     ? descriptors.map(p => `
         <span class="provider-detail">
           <strong>${escapeHtml(p.name)}</strong>
+          <small>${escapeHtml(p.model || "model not reported")}</small>
           <small>${escapeHtml((p.capabilities || []).join(", ") || "general")}</small>
           <button class="secondary provider-test" data-name="${escapeHtml(p.name)}">Test</button>
         </span>`).join("")
@@ -278,6 +279,7 @@ function renderResult(result, runId = null) {
   $("arbiterAnswer").textContent = arbiter
     ? (arbiter.raw_response || arbiter.error || arbiter.status)
     : "";
+  $("arbiterMeta").textContent = arbiter ? formatStageMeta(arbiter) : "";
   $("arbiterPromptDetails").classList.toggle("hidden", !arbiter?.prompt);
   $("arbiterPrompt").textContent = arbiter?.prompt || "";
   $("retryArbiter").classList.toggle(
@@ -290,6 +292,7 @@ function renderResult(result, runId = null) {
   $("criticAnswer").textContent = critic
     ? (critic.raw_response || critic.error || critic.status)
     : "";
+  $("criticMeta").textContent = critic ? formatStageMeta(critic) : "";
   $("criticPromptDetails").classList.toggle("hidden", !critic?.prompt);
   $("criticPrompt").textContent = critic?.prompt || "";
   $("retryCritic").classList.toggle(
@@ -301,9 +304,7 @@ function renderResult(result, runId = null) {
   $("delegateCards").innerHTML = result.panel.delegates.map(d => {
     const failed = d.status !== "succeeded";
     const body = d.raw_response || d.error || d.status;
-    const timing = d.latency_ms == null ? "" : ` · ${d.latency_ms} ms`;
-    const cost = formatCost(d.estimated_cost_usd);
-    const costText = cost ? ` · ${cost}` : "";
+    const meta = formatStageMeta(d);
     const retry = failed && currentRunId
       ? `<button class="secondary retry-delegate" data-name="${escapeHtml(d.name)}">Retry this delegate</button>`
       : "";
@@ -313,7 +314,7 @@ function renderResult(result, runId = null) {
     return `
       <article class="delegate ${failed ? "failed" : ""}">
         <strong>${escapeHtml(d.name)}</strong>
-        <div class="meta">${escapeHtml(d.status)}${d.model ? " · " + escapeHtml(d.model) : ""}${timing}${costText}</div>
+        <div class="meta">${escapeHtml(meta)}</div>
         <pre>${escapeHtml(body)}</pre>
         ${prompt}
         ${retry}
@@ -419,6 +420,23 @@ async function downloadCurrentRun() {
   } catch (error) {
     $("status").textContent = error.message;
   }
+}
+
+function formatStageMeta(stage) {
+  const parts = [stage.status];
+  if (stage.model) parts.push(stage.model);
+  if (stage.latency_ms != null) parts.push(`${stage.latency_ms} ms`);
+  const promptTokens = stage.usage?.prompt_tokens;
+  const completionTokens = stage.usage?.completion_tokens;
+  const totalTokens = stage.usage?.total_tokens;
+  if (totalTokens != null) {
+    parts.push(`${totalTokens} tokens`);
+  } else if (promptTokens != null || completionTokens != null) {
+    parts.push(`${promptTokens || 0} in / ${completionTokens || 0} out`);
+  }
+  const cost = formatCost(stage.estimated_cost_usd);
+  if (cost) parts.push(cost);
+  return parts.join(" · ");
 }
 
 function formatCost(value) {
