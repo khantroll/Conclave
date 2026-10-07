@@ -89,6 +89,26 @@ async function loadWorkspaces() {
   await loadHistory();
 }
 
+function parseRoles(text) {
+  const roles = {};
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator === -1) continue;
+    const name = trimmed.slice(0, separator).trim();
+    const role = trimmed.slice(separator + 1).trim();
+    if (name && role) roles[name] = role;
+  }
+  return roles;
+}
+
+function serializeRoles(roles) {
+  return Object.entries(roles || {})
+    .map(([name, role]) => `${name} = ${role}`)
+    .join("\n");
+}
+
 function workspaceFormBody() {
   return {
     name: $("workspaceName").value.trim(),
@@ -98,6 +118,7 @@ function workspaceFormBody() {
       .split(",")
       .map(s => s.trim())
       .filter(Boolean),
+    roles: parseRoles($("workspaceRoles").value),
     critic: $("workspaceCritic").value.trim() || null,
     arbiter: $("workspaceArbiter").value.trim(),
     minimum_successes: Number($("workspaceQuorum").value || 1),
@@ -109,6 +130,7 @@ async function saveWorkspace(event) {
   event.preventDefault();
   const body = workspaceFormBody();
   try {
+    const wasEditing = Boolean(editingWorkspaceId);
     let workspace;
     if (editingWorkspaceId) {
       workspace = await (await api(`/api/workspaces/${editingWorkspaceId}`, {
@@ -124,7 +146,7 @@ async function saveWorkspace(event) {
     activeWorkspaceId = workspace.id;
     resetWorkspaceForm();
     await loadWorkspaces();
-    $("status").textContent = editingWorkspaceId
+    $("status").textContent = wasEditing
       ? "Workspace updated."
       : "Workspace created.";
   } catch (error) {
@@ -143,6 +165,7 @@ function beginWorkspaceEdit() {
   $("workspaceDescription").value = workspace.description || "";
   $("workspaceContext").value = workspace.context || "";
   $("workspaceDelegates").value = workspace.delegates.join(", ");
+  $("workspaceRoles").value = serializeRoles(workspace.roles);
   $("workspaceCritic").value = workspace.critic || "";
   $("workspaceArbiter").value = workspace.arbiter;
   $("workspaceQuorum").value = String(workspace.minimum_successes);
@@ -254,12 +277,16 @@ function renderResult(result, runId = null) {
   $("arbiterAnswer").textContent = arbiter
     ? (arbiter.raw_response || arbiter.error || arbiter.status)
     : "";
+  $("arbiterPromptDetails").classList.toggle("hidden", !arbiter?.prompt);
+  $("arbiterPrompt").textContent = arbiter?.prompt || "";
 
   const critic = result.critic;
   $("criticSection").classList.toggle("hidden", !critic);
   $("criticAnswer").textContent = critic
     ? (critic.raw_response || critic.error || critic.status)
     : "";
+  $("criticPromptDetails").classList.toggle("hidden", !critic?.prompt);
+  $("criticPrompt").textContent = critic?.prompt || "";
 
   $("delegatesSection").classList.remove("hidden");
   $("delegateCards").innerHTML = result.panel.delegates.map(d => {
@@ -271,11 +298,15 @@ function renderResult(result, runId = null) {
     const retry = failed && currentRunId
       ? `<button class="secondary retry-delegate" data-name="${escapeHtml(d.name)}">Retry this delegate</button>`
       : "";
+    const prompt = d.prompt
+      ? `<details class="prompt-details"><summary>Show exact Delegate prompt</summary><pre>${escapeHtml(d.prompt)}</pre></details>`
+      : "";
     return `
       <article class="delegate ${failed ? "failed" : ""}">
         <strong>${escapeHtml(d.name)}</strong>
         <div class="meta">${escapeHtml(d.status)}${d.model ? " · " + escapeHtml(d.model) : ""}${timing}${costText}</div>
         <pre>${escapeHtml(body)}</pre>
+        ${prompt}
         ${retry}
       </article>`;
   }).join("");
