@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from ..config import ProviderConfig, read_api_key
 from .base import Provider
 from .openai_compatible import OpenAICompatibleProvider
+from .unavailable import UnavailableProvider
 
 
 def build_providers(configs: Iterable[ProviderConfig]) -> dict[str, Provider]:
@@ -15,10 +16,16 @@ def build_providers(configs: Iterable[ProviderConfig]) -> dict[str, Provider]:
             raise ValueError(f"Duplicate provider name: {config.name}")
 
         if config.kind == "openai_compatible":
+            try:
+                api_key = read_api_key(config)
+            except RuntimeError as exc:
+                providers[config.name] = UnavailableProvider(str(exc))
+                continue
+
             providers[config.name] = OpenAICompatibleProvider(
                 base_url=config.base_url,
                 model=config.model,
-                api_key=read_api_key(config),
+                api_key=api_key,
                 system_prompt=config.system_prompt,
                 extra_headers=config.extra_headers,
                 input_cost_per_million=config.input_cost_per_million,
