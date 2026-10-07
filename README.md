@@ -78,7 +78,7 @@ The first useful version should stay deliberately small:
 - Configurable synthesis/authority model
 - Basic token, latency, and cost accounting
 
-See [docs/MVP.md](docs/MVP.md) for the bounded first-release definition and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for current design notes.
+See [docs/MVP.md](docs/MVP.md) for the bounded first-release definition, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for current design notes, [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for provider setup, and [docs/MANUAL_TEST.md](docs/MANUAL_TEST.md) for the staged human-test checklist.
 
 ### Explicitly not MVP
 
@@ -104,17 +104,21 @@ The current pre-alpha contains:
 - SQLite-backed persistent workspaces with default delegates, roles, Critic, Arbiter, and project context
 - persisted workspace deliberation history with raw delegate/Critic/Arbiter results
 - saved request snapshots so old runs can be reproduced safely
+- exact Delegate/Critic/Arbiter prompt preservation and inspection
 - isolated retry of one Delegate without rerunning successful Delegates
+- isolated Critic and Arbiter retries without rerunning the Delegate panel
 - deterministic request-complexity analysis that recommends panel size and desired capabilities
 - capability-aware automatic Delegate selection within a workspace
 - provider capability/priority metadata for role-aware routing
-- provider discovery and model/token metadata
-- a first usable browser console for workspaces, questions, history, results, and retries
+- provider discovery, explicit connection testing, model/token metadata, latency, and optional cost estimation
+- workspace create/edit/delete with preserved detached run history
+- JSON export of saved runs for debugging/review
+- a first usable browser console for workspaces, questions, history, results, prompt inspection, and retries
 - deterministic fake providers for testing
 - API, persistence, prompt, provider, analyzer, and orchestration tests
 - GitHub Actions CI
 
-Automatic Delegate selection is now available at the workspace level. Richer cost accounting, workspace editing polish, provider health scoring, and native provider adapters where needed are still ahead.
+Automatic Delegate selection, workspace editing, connectivity tests, and optional cost estimation are now available. Native provider adapters, deeper source/citation normalization, and richer long-term provider health scoring remain future work.
 
 ## Development
 
@@ -201,9 +205,9 @@ Conclave should not turn a single provider failure into a failed session.
 
 ## Status
 
-**Pre-alpha / active scaffold.**
+**Pre-alpha / ready for staged manual testing once CI is green.**
 
-The orchestration skeleton is under development. The immediate goal is to prove reliable delegate execution and failure isolation before adding real provider integrations or UI complexity.
+The deterministic orchestration path, persistence, routing, failure isolation, retries, cost/latency capture, and first browser console are implemented. The next meaningful uncertainty is how the system behaves with real provider credentials and real model responses.
 
 ## License
 
