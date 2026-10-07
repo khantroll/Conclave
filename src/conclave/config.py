@@ -18,6 +18,8 @@ class ProviderConfig(BaseModel):
     extra_headers: dict[str, str] = Field(default_factory=dict)
     capabilities: list[str] = Field(default_factory=list)
     priority: int = 100
+    input_cost_per_million: float | None = Field(default=None, ge=0)
+    output_cost_per_million: float | None = Field(default=None, ge=0)
 
 
 class ConclaveConfig(BaseModel):
