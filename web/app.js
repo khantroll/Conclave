@@ -87,7 +87,42 @@ async function loadWorkspaces() {
     activeWorkspaceId = workspaces[0]?.id || null;
   }
   select.value = activeWorkspaceId || "";
+  renderWorkspaceSummary();
   await loadHistory();
+}
+
+function renderWorkspaceSummary() {
+  const target = $("workspaceSummary");
+  const workspace = workspaces.find(w => w.id === activeWorkspaceId);
+  if (!workspace) {
+    target.innerHTML = "<em>No active workspace.</em>";
+    return;
+  }
+
+  const roles = workspace.roles || {};
+  const delegates = workspace.delegates.map(name => {
+    const role = roles[name] ? ` — ${roles[name]}` : "";
+    return `<div><strong>${escapeHtml(name)}</strong>${escapeHtml(role)}</div>`;
+  }).join("");
+
+  const overlaps = [];
+  if (workspace.delegates.includes(workspace.arbiter)) {
+    overlaps.push(`Arbiter ${workspace.arbiter} is also a Delegate`);
+  }
+  if (workspace.critic && workspace.delegates.includes(workspace.critic)) {
+    overlaps.push(`Critic ${workspace.critic} is also a Delegate`);
+  }
+
+  target.innerHTML = `
+    <dl>
+      <dt>Delegates</dt><dd>${delegates || "None"}</dd>
+      <dt>Critic</dt><dd>${escapeHtml(workspace.critic || "None")}</dd>
+      <dt>Arbiter</dt><dd>${escapeHtml(workspace.arbiter)}</dd>
+      <dt>Routing</dt><dd>${workspace.auto_select_delegates ? "Automatic subset" : "Fixed panel"}</dd>
+      <dt>Quorum</dt><dd>${workspace.minimum_successes}</dd>
+    </dl>
+    ${overlaps.length ? `<div class="warning">⚠ ${escapeHtml(overlaps.join("; "))}</div>` : ""}
+  `;
 }
 
 function parseRoles(text) {
@@ -130,6 +165,20 @@ function workspaceFormBody() {
 async function saveWorkspace(event) {
   event.preventDefault();
   const body = workspaceFormBody();
+
+  const overlaps = [];
+  if (body.delegates.includes(body.arbiter)) {
+    overlaps.push(`Arbiter "${body.arbiter}" is also listed as a Delegate`);
+  }
+  if (body.critic && body.delegates.includes(body.critic)) {
+    overlaps.push(`Critic "${body.critic}" is also listed as a Delegate`);
+  }
+  if (overlaps.length && !confirm(
+    `${overlaps.join(". ")}. This is allowed, but that provider will run in both roles. Continue?`
+  )) {
+    return;
+  }
+
   try {
     const wasEditing = Boolean(editingWorkspaceId);
     let workspace;
@@ -184,6 +233,7 @@ function resetWorkspaceForm() {
   $("workspaceFormSummary").textContent = "Create workspace";
   $("workspaceSubmit").textContent = "Create";
   $("workspaceCancel").classList.add("hidden");
+  $("workspaceFormDetails").open = false;
 }
 
 async function deleteWorkspace() {
@@ -388,11 +438,22 @@ async function loadAllHistory() {
 function renderHistory(targetId, runs) {
   const target = $(targetId);
   target.innerHTML = runs.length
-    ? runs.map(run => `
+    ? runs.map(run => {
+        const title = summarizeQuestion(run.question, 78);
+        const preview = summarizeQuestion(run.question, 150);
+        const panel = run.result?.panel;
+        const delegateCount = panel?.delegates?.length ?? 0;
+        const succeeded = panel?.successful_count ?? 0;
+        const critic = run.result?.critic?.status === "succeeded" ? "Critic ✓" : (run.result?.critic ? "Critic ✕" : "No Critic");
+        const arbiter = run.result?.arbiter?.status === "succeeded" ? "Arbiter ✓" : (run.result?.arbiter ? "Arbiter ✕" : "No Arbiter");
+        const cost = formatCost(run.result?.estimated_cost_usd);
+        return `
         <div class="history-item" data-run-id="${run.id}">
-          <strong>${escapeHtml(run.question)}</strong>
-          <small>${new Date(run.created_at).toLocaleString()} · ${run.id.slice(0, 8)}${run.workspace_id ? "" : " · detached"}${formatCost(run.result?.estimated_cost_usd) ? " · " + formatCost(run.result.estimated_cost_usd) : ""}</small>
-        </div>`).join("")
+          <strong>${escapeHtml(title)}</strong>
+          <div class="history-preview">${escapeHtml(preview)}</div>
+          <small>${new Date(run.created_at).toLocaleString()} · ${succeeded}/${delegateCount} delegates · ${critic} · ${arbiter}${run.workspace_id ? "" : " · detached"}${cost ? " · " + cost : ""}</small>
+        </div>`;
+      }).join("")
     : "<p>No runs yet.</p>";
 
   target.querySelectorAll(".history-item").forEach(item => {
@@ -420,6 +481,12 @@ async function downloadCurrentRun() {
   } catch (error) {
     $("status").textContent = error.message;
   }
+}
+
+function summarizeQuestion(question, maxLength) {
+  const normalized = String(question || "").replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd() + "…";
 }
 
 function formatStageMeta(stage) {
@@ -458,6 +525,7 @@ function escapeHtml(value) {
 $("workspaceSelect").addEventListener("change", async (event) => {
   activeWorkspaceId = event.target.value || null;
   currentRunId = null;
+  renderWorkspaceSummary();
   await loadHistory();
 });
 $("workspaceForm").addEventListener("submit", saveWorkspace);
