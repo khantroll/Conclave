@@ -271,6 +271,7 @@ async function deliberate() {
 function renderResult(result, runId = null) {
   currentRunId = runId || currentRunId;
   $("runId").textContent = currentRunId ? `run ${currentRunId.slice(0, 8)}` : "";
+  $("downloadRun").classList.toggle("hidden", !currentRunId);
 
   const arbiter = result.arbiter;
   $("answerSection").classList.toggle("hidden", !arbiter);
@@ -359,6 +360,24 @@ async function loadHistory() {
   });
 }
 
+async function downloadCurrentRun() {
+  if (!currentRunId) return;
+  try {
+    const run = await (await api(`/api/runs/${currentRunId}`)).json();
+    const blob = new Blob([JSON.stringify(run, null, 2)], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `conclave-run-${currentRunId}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    $("status").textContent = error.message;
+  }
+}
+
 function formatCost(value) {
   if (value == null || Number.isNaN(Number(value))) return "";
   const amount = Number(value);
@@ -388,6 +407,7 @@ $("refreshWorkspaces").addEventListener("click", loadWorkspaces);
 $("refreshHistory").addEventListener("click", loadHistory);
 $("analyzeButton").addEventListener("click", analyze);
 $("runButton").addEventListener("click", deliberate);
+$("downloadRun").addEventListener("click", downloadCurrentRun);
 
 Promise.all([loadHealth(), loadProviders(), loadWorkspaces()]).catch(error => {
   $("status").textContent = error.message;
