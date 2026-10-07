@@ -92,5 +92,24 @@ class DeliberationRun(BaseModel):
     id: str
     workspace_id: str | None = None
     question: str
+    request: DeliberationRequest | None = None
     result: DeliberationResult
     created_at: str
+
+
+class RequestComplexity(StrEnum):
+    SIMPLE = "simple"
+    STANDARD = "standard"
+    COMPLEX = "complex"
+    DEEP = "deep"
+
+
+class RequestAnalysis(BaseModel):
+    complexity: RequestComplexity
+    recommended_delegate_count: int = Field(ge=1, le=4)
+    signals: list[str] = Field(default_factory=list)
+    rationale: str
+
+
+class AnalyzeRequest(BaseModel):
+    question: str = Field(min_length=1)
