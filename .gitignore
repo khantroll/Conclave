@@ -29,6 +29,7 @@ coverage/
 Thumbs.db
 
 # Local data / secrets
+conclave.json
 *.db
 *.sqlite
 *.sqlite3
