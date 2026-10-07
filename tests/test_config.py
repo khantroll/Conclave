@@ -20,6 +20,8 @@ def test_load_config_and_build_provider(tmp_path, monkeypatch):
                         "api_key_env": "TEST_GATEWAY_KEY",
                         "capabilities": ["research", "general"],
                         "priority": 25,
+                        "input_cost_per_million": 2.5,
+                        "output_cost_per_million": 10.0,
                     }
                 ]
             }
@@ -35,6 +37,8 @@ def test_load_config_and_build_provider(tmp_path, monkeypatch):
     assert isinstance(providers["gateway"], OpenAICompatibleProvider)
     assert config.providers[0].capabilities == ["research", "general"]
     assert config.providers[0].priority == 25
+    assert config.providers[0].input_cost_per_million == 2.5
+    assert config.providers[0].output_cost_per_million == 10.0
 
 
 def test_read_api_key_requires_declared_environment_variable(monkeypatch):
