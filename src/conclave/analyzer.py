@@ -14,6 +14,24 @@ _DEEP_TERMS = re.compile(
     r"benchmark|root cause|security review|threat model)\b",
     re.IGNORECASE,
 )
+_CAPABILITY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("code", re.compile(r"\b(code|coding|bug|debug|repository|repo|api|software|programming)\b", re.I)),
+    ("research", re.compile(r"\b(research|sources|evidence|current|latest|documentation|docs)\b", re.I)),
+    ("reasoning", re.compile(r"\b(compare|evaluate|strategy|tradeoff|trade-off|architecture|why|decision)\b", re.I)),
+    ("critical", re.compile(r"\b(risk|failure|critic|skeptical|adversarial|weakness|threat model|security review)\b", re.I)),
+    ("creative", re.compile(r"\b(write|creative|story|character|brainstorm|name|design concept)\b", re.I)),
+    ("fast", re.compile(r"\b(quick|simple|short|brief|fast)\b", re.I)),
+]
+
+
+def _desired_capabilities(text: str) -> list[str]:
+    capabilities: list[str] = []
+    for capability, pattern in _CAPABILITY_PATTERNS:
+        if pattern.search(text):
+            capabilities.append(capability)
+    if not capabilities:
+        capabilities.append("general")
+    return capabilities
 
 
 def analyze_request(question: str) -> RequestAnalysis:
@@ -45,10 +63,13 @@ def analyze_request(question: str) -> RequestAnalysis:
         score += 1
         signals.append("multi-part request")
 
+    desired = _desired_capabilities(text)
+
     if score <= 1:
         return RequestAnalysis(
             complexity=RequestComplexity.SIMPLE,
             recommended_delegate_count=1,
+            desired_capabilities=desired,
             signals=signals,
             rationale="A single model is likely sufficient; a panel would add overhead.",
         )
@@ -56,6 +77,7 @@ def analyze_request(question: str) -> RequestAnalysis:
         return RequestAnalysis(
             complexity=RequestComplexity.STANDARD,
             recommended_delegate_count=2,
+            desired_capabilities=desired,
             signals=signals,
             rationale="A second independent perspective is likely useful.",
         )
@@ -63,12 +85,14 @@ def analyze_request(question: str) -> RequestAnalysis:
         return RequestAnalysis(
             complexity=RequestComplexity.COMPLEX,
             recommended_delegate_count=3,
+            desired_capabilities=desired,
             signals=signals,
             rationale="The request benefits from multiple independent perspectives and synthesis.",
         )
     return RequestAnalysis(
         complexity=RequestComplexity.DEEP,
         recommended_delegate_count=4,
+        desired_capabilities=desired,
         signals=signals,
         rationale="The request is broad or high-complexity enough to justify a full panel.",
     )
