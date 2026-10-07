@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 
 from .config import load_config
 from .models import (
     DeliberationRequest,
     DeliberationResult,
+    DeliberationRun,
     PanelRequest,
     PanelResult,
     Workspace,
@@ -79,6 +80,22 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Workspace not found")
         return workspace
 
+    @app.get(
+        "/api/workspaces/{workspace_id}/runs",
+        response_model=list[DeliberationRun],
+    )
+    async def list_workspace_runs(workspace_id: str) -> list[DeliberationRun]:
+        if store.get(workspace_id) is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        return store.list_runs(workspace_id)
+
+    @app.get("/api/runs/{run_id}", response_model=DeliberationRun)
+    async def get_run(run_id: str) -> DeliberationRun:
+        run = store.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Deliberation run not found")
+        return run
+
     @app.post(
         "/api/workspaces/{workspace_id}/deliberate",
         response_model=DeliberationResult,
@@ -86,6 +103,7 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
     async def deliberate_in_workspace(
         workspace_id: str,
         request: WorkspaceDeliberationRequest,
+        response: Response,
     ) -> DeliberationResult:
         workspace = store.get(workspace_id)
         if workspace is None:
@@ -103,7 +121,14 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
             critic_timeout_seconds=request.critic_timeout_seconds,
             arbiter_timeout_seconds=request.arbiter_timeout_seconds,
         )
-        return await orchestrator.deliberate(deliberation)
+        result = await orchestrator.deliberate(deliberation)
+        run = store.save_run(
+            workspace_id=workspace.id,
+            question=request.question,
+            result=result,
+        )
+        response.headers["X-Conclave-Run-ID"] = run.id
+        return result
 
     return app
 
