@@ -4,7 +4,16 @@ import asyncio
 from collections.abc import Mapping
 from time import perf_counter
 
-from .models import DelegateRequest, DelegateResult, DelegateStatus, PanelRequest, PanelResult
+from .models import (
+    DeliberationRequest,
+    DeliberationResult,
+    DelegateRequest,
+    DelegateResult,
+    DelegateStatus,
+    PanelRequest,
+    PanelResult,
+)
+from .prompts import build_arbiter_prompt, build_delegate_prompt
 from .providers.base import Provider
 
 
@@ -32,6 +41,42 @@ class Orchestrator:
             failed_count=failed_count,
             synthesizeable=successful_count >= request.minimum_successes,
         )
+
+    async def deliberate(self, request: DeliberationRequest) -> DeliberationResult:
+        panel_request = PanelRequest(
+            question=request.question,
+            delegates=[
+                DelegateRequest(
+                    name=name,
+                    prompt=build_delegate_prompt(
+                        question=request.question,
+                        role=request.roles.get(name),
+                        workspace_context=request.workspace_context,
+                    ),
+                    timeout_seconds=request.timeout_seconds,
+                )
+                for name in request.delegates
+            ],
+            minimum_successes=request.minimum_successes,
+        )
+        panel = await self.run_panel(panel_request)
+
+        if not panel.synthesizeable:
+            return DeliberationResult(panel=panel)
+
+        arbiter_prompt = build_arbiter_prompt(
+            question=request.question,
+            delegate_results=panel.delegates,
+            workspace_context=request.workspace_context,
+        )
+        arbiter = await self._run_delegate(
+            DelegateRequest(
+                name=request.arbiter,
+                prompt=arbiter_prompt,
+                timeout_seconds=request.arbiter_timeout_seconds,
+            )
+        )
+        return DeliberationResult(panel=panel, arbiter=arbiter)
 
     async def _run_delegate(self, delegate: DelegateRequest) -> DelegateResult:
         provider = self._providers.get(delegate.name)
