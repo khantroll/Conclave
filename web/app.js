@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 
 let workspaces = [];
 let activeWorkspaceId = null;
+let currentRunId = null;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -110,7 +111,8 @@ async function deliberate() {
 }
 
 function renderResult(result, runId = null) {
-  $("runId").textContent = runId ? `run ${runId.slice(0, 8)}` : "";
+  currentRunId = runId || currentRunId;
+  $("runId").textContent = currentRunId ? `run ${currentRunId.slice(0, 8)}` : "";
 
   const arbiter = result.arbiter;
   $("answerSection").classList.toggle("hidden", !arbiter);
@@ -129,13 +131,40 @@ function renderResult(result, runId = null) {
     const failed = d.status !== "succeeded";
     const content = d.raw_response || d.error || d.status;
     const timing = d.latency_ms == null ? "" : ` · ${d.latency_ms} ms`;
+    const retry = failed && currentRunId
+      ? `<button class="secondary retry-delegate" data-name="${escapeHtml(d.name)}">Retry this delegate</button>`
+      : "";
     return `
       <article class="delegate ${failed ? "failed" : ""}">
         <strong>${escapeHtml(d.name)}</strong>
         <div class="meta">${escapeHtml(d.status)}${d.model ? " · " + escapeHtml(d.model) : ""}${timing}</div>
         <pre>${escapeHtml(content)}</pre>
+        ${retry}
       </article>`;
   }).join("");
+
+  document.querySelectorAll(".retry-delegate").forEach(button => {
+    button.addEventListener("click", () => retryDelegate(button.dataset.name, button));
+  });
+}
+
+async function retryDelegate(name, button) {
+  if (!currentRunId) return;
+  button.disabled = true;
+  $("status").textContent = `Retrying ${name} without rerunning successful delegates…`;
+  try {
+    const run = await (await api(
+      `/api/runs/${currentRunId}/delegates/${encodeURIComponent(name)}/retry`,
+      {method: "POST"}
+    )).json();
+    renderResult(run.result, run.id);
+    $("status").textContent = `${name} retried; Critic and Arbiter refreshed.`;
+    await loadHistory();
+  } catch (error) {
+    $("status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function loadHistory() {
