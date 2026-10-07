@@ -37,6 +37,9 @@
           <label>Delegates <small>comma-separated provider names</small>
             <input id="workspaceDelegates" placeholder="openai, claude, gemini" required>
           </label>
+          <label>Delegate roles <small>one per line: provider = role/instructions</small>
+            <textarea id="workspaceRoles" rows="5" placeholder="openai = Architect\nclaude = Skeptical reviewer\ngemini = Researcher"></textarea>
+          </label>
           <label>Critic<input id="workspaceCritic" placeholder="claude"></label>
           <label>Arbiter<input id="workspaceArbiter" placeholder="openai" required></label>
           <label>Minimum successes<input id="workspaceQuorum" type="number" min="1" value="1"></label>
@@ -74,11 +77,19 @@
           <span id="runId" class="badge muted"></span>
         </div>
         <pre id="arbiterAnswer"></pre>
+        <details id="arbiterPromptDetails" class="prompt-details hidden">
+          <summary>Show exact Arbiter prompt</summary>
+          <pre id="arbiterPrompt"></pre>
+        </details>
       </section>
 
       <section id="criticSection" class="panel hidden">
         <h2>Critic audit</h2>
         <pre id="criticAnswer"></pre>
+        <details id="criticPromptDetails" class="prompt-details hidden">
+          <summary>Show exact Critic prompt</summary>
+          <pre id="criticPrompt"></pre>
+        </details>
       </section>
 
       <section id="delegatesSection" class="panel hidden">
