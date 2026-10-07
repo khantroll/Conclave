@@ -44,6 +44,7 @@ async function loadProviders() {
           <strong>${escapeHtml(p.name)}</strong>
           <small>${escapeHtml(p.model || "model not reported")}</small>
           <small>${escapeHtml((p.capabilities || []).join(", ") || "general")}</small>
+          <span class="provider-source">${escapeHtml(p.source || "configured")}</span>
           <button class="secondary provider-test" data-name="${escapeHtml(p.name)}">Test</button>
         </span>`).join("")
     : body.providers.map(p => `
@@ -155,6 +156,30 @@ function serializeRoles(roles) {
   return Object.entries(roles || {})
     .map(([name, role]) => `${name} = ${role}`)
     .join("\n");
+}
+
+function insertContextTemplate() {
+  const existing = $("workspaceContext").value.trim();
+  if (existing && !confirm("Replace the existing workspace context with a starter template?")) {
+    return;
+  }
+  $("workspaceContext").value = [
+    "Project purpose:",
+    "- ",
+    "",
+    "Core principles / constraints:",
+    "- ",
+    "",
+    "Current state:",
+    "- ",
+    "",
+    "Do not do:",
+    "- ",
+    "",
+    "Decision preferences:",
+    "- ",
+  ].join("\n");
+  $("workspaceContext").focus();
 }
 
 function workspaceFormBody() {
@@ -541,6 +566,7 @@ $("workspaceSelect").addEventListener("change", async (event) => {
   await loadHistory();
 });
 $("workspaceForm").addEventListener("submit", saveWorkspace);
+$("insertContextTemplate").addEventListener("click", insertContextTemplate);
 $("workspaceCancel").addEventListener("click", resetWorkspaceForm);
 $("editWorkspace").addEventListener("click", beginWorkspaceEdit);
 $("deleteWorkspace").addEventListener("click", deleteWorkspace);
