@@ -290,6 +290,54 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
             result=result,
         )
 
+    @app.post("/api/runs/{run_id}/critic/retry", response_model=DeliberationRun)
+    async def retry_critic(run_id: str) -> DeliberationRun:
+        run = store.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Deliberation run not found")
+        if run.request is None:
+            raise HTTPException(
+                status_code=409,
+                detail="This run predates request snapshots and cannot be retried safely",
+            )
+        try:
+            result = await orchestrator.retry_critic(
+                request=run.request,
+                prior_result=run.result,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return store.save_run(
+            workspace_id=run.workspace_id,
+            question=run.question,
+            request=run.request,
+            result=result,
+        )
+
+    @app.post("/api/runs/{run_id}/arbiter/retry", response_model=DeliberationRun)
+    async def retry_arbiter(run_id: str) -> DeliberationRun:
+        run = store.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Deliberation run not found")
+        if run.request is None:
+            raise HTTPException(
+                status_code=409,
+                detail="This run predates request snapshots and cannot be retried safely",
+            )
+        try:
+            result = await orchestrator.retry_arbiter(
+                request=run.request,
+                prior_result=run.result,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return store.save_run(
+            workspace_id=run.workspace_id,
+            question=run.question,
+            request=run.request,
+            result=result,
+        )
+
     return app
 
 
