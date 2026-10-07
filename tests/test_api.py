@@ -14,6 +14,22 @@ def test_health():
     assert body["provider_count"] >= 4
 
 
+def test_request_analysis_recommends_panel_for_complex_question():
+    response = client.post(
+        "/api/analyze",
+        json={
+            "question": (
+                "Compare two architecture strategies, identify implementation risks, "
+                "failure modes, tradeoffs, and recommend a roadmap with evidence."
+            )
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["recommended_delegate_count"] >= 3
+    assert body["complexity"] in {"complex", "deep"}
+
+
 def test_provider_names():
     response = client.get("/api/providers")
     assert response.status_code == 200
@@ -110,4 +126,20 @@ def test_workspace_persists_defaults_run_and_history(tmp_path):
 
     fetched = workspace_client.get(f"/api/runs/{runs[0]['id']}")
     assert fetched.status_code == 200
-    assert fetched.json()["result"]["arbiter"]["status"] == "succeeded"
+    saved = fetched.json()
+    assert saved["result"]["arbiter"]["status"] == "succeeded"
+    assert saved["request"]["delegates"] == ["demo-a", "demo-b"]
+
+    retried = workspace_client.post(
+        f"/api/runs/{runs[0]['id']}/delegates/demo-a/retry"
+    )
+    assert retried.status_code == 200
+    retry_run = retried.json()
+    assert retry_run["id"] != runs[0]["id"]
+    assert retry_run["result"]["panel"]["successful_count"] == 2
+    assert retry_run["result"]["arbiter"]["status"] == "succeeded"
+
+    history_after_retry = workspace_client.get(
+        f"/api/workspaces/{workspace['id']}/runs"
+    )
+    assert len(history_after_retry.json()) == 2
