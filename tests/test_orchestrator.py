@@ -213,3 +213,18 @@ async def test_deliberation_sums_available_cost_estimates():
 
     assert result.estimated_cost_usd == 0.06
     assert result.panel.delegates[0].estimated_cost_usd == 0.01
+
+
+async def test_delegate_result_preserves_exact_prompt():
+    orchestrator = Orchestrator({"one": FakeProvider("answer")})
+    prompt = "EXACT PROMPT FOR INSPECTION"
+
+    result = await orchestrator.run_panel(
+        PanelRequest(
+            question="prompt visibility",
+            delegates=[DelegateRequest(name="one", prompt=prompt)],
+            minimum_successes=1,
+        )
+    )
+
+    assert result.delegates[0].prompt == prompt
