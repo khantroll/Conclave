@@ -21,6 +21,7 @@
         <h2>Workspace</h2>
         <label for="workspaceSelect">Active workspace</label>
         <select id="workspaceSelect"></select>
+        <div id="workspaceSummary" class="workspace-summary muted-block"></div>
         <div class="row">
           <button id="refreshWorkspaces" class="secondary">Refresh</button>
           <button id="editWorkspace" class="secondary">Edit</button>
@@ -28,7 +29,7 @@
         </div>
       </section>
 
-      <details class="panel">
+      <details id="workspaceFormDetails" class="panel">
         <summary id="workspaceFormSummary">Create workspace</summary>
         <form id="workspaceForm">
           <label>Name<input id="workspaceName" required></label>
