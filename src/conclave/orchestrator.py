@@ -187,6 +187,7 @@ class Orchestrator:
             return DelegateResult(
                 name=delegate.name,
                 status=DelegateStatus.FAILED,
+                prompt=delegate.prompt,
                 error=f"No provider configured for delegate: {delegate.name}",
             )
 
@@ -200,6 +201,7 @@ class Orchestrator:
             return DelegateResult(
                 name=delegate.name,
                 status=DelegateStatus.TIMED_OUT,
+                prompt=delegate.prompt,
                 error=f"Timed out after {delegate.timeout_seconds:g}s",
                 latency_ms=_elapsed_ms(started),
             )
@@ -207,6 +209,7 @@ class Orchestrator:
             return DelegateResult(
                 name=delegate.name,
                 status=DelegateStatus.FAILED,
+                prompt=delegate.prompt,
                 error=str(exc),
                 latency_ms=_elapsed_ms(started),
             )
@@ -214,6 +217,7 @@ class Orchestrator:
         return DelegateResult(
             name=delegate.name,
             status=DelegateStatus.SUCCEEDED,
+            prompt=delegate.prompt,
             raw_response=response.text,
             model=response.model,
             usage=response.usage,
