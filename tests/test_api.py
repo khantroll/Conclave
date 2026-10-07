@@ -19,6 +19,9 @@ def test_health():
     body = response.json()
     assert body["status"] == "ok"
     assert body["provider_count"] >= 4
+    assert body["demo_provider_count"] >= 4
+    assert body["configured_provider_count"] == 0
+    assert body["demo_only"] is True
 
 
 def test_request_analysis_recommends_panel_for_complex_question():
