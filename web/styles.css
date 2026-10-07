@@ -111,3 +111,17 @@ summary { cursor: pointer; font-weight: 700; }
 .checkbox-row input { width: auto; }
 .provider-detail { display: grid; gap: .1rem; }
 .provider-detail small { font-size: .72rem; }
+
+.prompt-details {
+  margin-top: .9rem;
+  border-top: 1px solid #2d3440;
+  padding-top: .7rem;
+}
+.prompt-details pre {
+  background: #101319;
+  border: 1px solid #303846;
+  border-radius: 8px;
+  padding: .75rem;
+  color: #b8c0cd;
+  font-size: .88rem;
+}
