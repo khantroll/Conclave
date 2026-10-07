@@ -92,18 +92,23 @@ See [docs/MVP.md](docs/MVP.md) for the bounded first-release definition and [doc
 
 ## Current implementation
 
-The first scaffold now contains:
+The current pre-alpha contains:
 
 - a FastAPI service
 - provider-neutral delegate abstraction
-- concurrent panel execution
-- independent per-delegate timeouts
+- a generic OpenAI-compatible adapter for direct endpoints, OpenRouter, LiteLLM Proxy, LM Studio, and similar gateways
+- concurrent panel execution with independent per-delegate timeouts
 - partial-success handling
-- a fake provider for deterministic testing
-- API and orchestration smoke tests
-- GitHub Actions test workflow
+- a dedicated **Critic → Arbiter** pipeline
+- deterministic role/context prompt construction
+- SQLite-backed persistent workspaces with default delegates, roles, Critic, Arbiter, and project context
+- persisted workspace deliberation history with raw delegate/Critic/Arbiter results
+- provider discovery and model/token metadata
+- deterministic fake providers for testing
+- API, persistence, prompt, provider, and orchestration tests
+- GitHub Actions CI
 
-Real OpenAI/Anthropic/Gemini/LiteLLM adapters, prompt routing, criticism, synthesis, persistence, and the web UI are intentionally still ahead of this scaffold.
+A web frontend, request complexity/router logic, independent retry controls, richer cost accounting, and native provider adapters where needed are still ahead.
 
 ## Development
 
@@ -150,11 +155,11 @@ Potential implementation stack:
 
 - **Backend:** Python + FastAPI
 - **Frontend:** React/Next.js or another lightweight web UI
-- **Storage:** SQLite initially
-- **Provider gateway:** LiteLLM is the leading candidate
-- **Local providers:** Ollama / LM Studio through OpenAI-compatible APIs
+- **Storage:** SQLite
+- **Provider gateway:** optional; LiteLLM/OpenRouter can sit behind Conclave's OpenAI-compatible adapter
+- **Local providers:** LM Studio/Ollama-style OpenAI-compatible endpoints
 
-No implementation choice above should be considered final until the MVP requirements are written and tested against existing orchestration tools.
+Conclave intentionally owns orchestration, failure isolation, Critic/Arbiter behavior, and persistence even when a gateway handles provider-specific API differences.
 
 ## Failure behavior
 
