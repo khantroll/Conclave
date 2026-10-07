@@ -14,6 +14,10 @@ class Orchestrator:
     def __init__(self, providers: Mapping[str, Provider]) -> None:
         self._providers = dict(providers)
 
+    @property
+    def provider_names(self) -> list[str]:
+        return sorted(self._providers)
+
     async def run_panel(self, request: PanelRequest) -> PanelResult:
         tasks = [self._run_delegate(delegate) for delegate in request.delegates]
         results = await asyncio.gather(*tasks)
@@ -62,7 +66,9 @@ class Orchestrator:
         return DelegateResult(
             name=delegate.name,
             status=DelegateStatus.SUCCEEDED,
-            raw_response=response,
+            raw_response=response.text,
+            model=response.model,
+            usage=response.usage,
             latency_ms=_elapsed_ms(started),
         )
 
