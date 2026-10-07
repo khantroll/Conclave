@@ -27,7 +27,14 @@ async function loadHealth() {
 
 async function loadProviders() {
   const body = await (await api("/api/providers")).json();
-  $("providers").innerHTML = body.providers.map(p => `<span>${escapeHtml(p)}</span>`).join("");
+  const descriptors = body.descriptors || [];
+  $("providers").innerHTML = descriptors.length
+    ? descriptors.map(p => `
+        <span class="provider-detail">
+          <strong>${escapeHtml(p.name)}</strong>
+          <small>${escapeHtml((p.capabilities || []).join(", ") || "general")}</small>
+        </span>`).join("")
+    : body.providers.map(p => `<span>${escapeHtml(p)}</span>`).join("");
 }
 
 async function loadWorkspaces() {
@@ -56,6 +63,7 @@ async function createWorkspace(event) {
     critic: $("workspaceCritic").value.trim() || null,
     arbiter: $("workspaceArbiter").value.trim(),
     minimum_successes: Number($("workspaceQuorum").value || 1),
+    auto_select_delegates: $("workspaceAutoSelect").checked,
   };
   const created = await (await api("/api/workspaces", {
     method: "POST",
@@ -76,7 +84,20 @@ async function analyze() {
   })).json();
   $("complexity").textContent =
     `${body.complexity} · suggests ${body.recommended_delegate_count} delegate${body.recommended_delegate_count === 1 ? "" : "s"}`;
-  $("status").textContent = body.rationale;
+
+  let detail = body.rationale;
+  if (activeWorkspaceId) {
+    try {
+      const selection = await (await api(`/api/workspaces/${activeWorkspaceId}/select`, {
+        method: "POST",
+        body: JSON.stringify({question}),
+      })).json();
+      detail += ` Suggested delegates: ${selection.selected.join(", ")}.`;
+    } catch {
+      // The generic analysis is still useful if workspace selection preview fails.
+    }
+  }
+  $("status").textContent = detail;
 }
 
 async function deliberate() {
