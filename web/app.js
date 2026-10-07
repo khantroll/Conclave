@@ -21,8 +21,17 @@ async function loadHealth() {
   try {
     const body = await (await api("/health")).json();
     $("health").textContent = `online · ${body.provider_count} providers`;
+    $("providerMode").textContent = body.demo_only
+      ? "demo only"
+      : `${body.configured_provider_count} configured`;
+    $("providerNotice").classList.toggle("warning", body.demo_only);
+    $("providerNotice").textContent = body.demo_only
+      ? "No real API providers are configured yet. Demo runs prove orchestration only; they do not evaluate answer quality."
+      : `${body.configured_provider_count} real provider(s) configured plus ${body.demo_provider_count} demo provider(s). Restart Conclave after changing conclave.json or .env.`;
   } catch {
     $("health").textContent = "offline";
+    $("providerMode").textContent = "";
+    $("providerNotice").textContent = "";
   }
 }
 
@@ -120,8 +129,10 @@ function renderWorkspaceSummary() {
       <dt>Arbiter</dt><dd>${escapeHtml(workspace.arbiter)}</dd>
       <dt>Routing</dt><dd>${workspace.auto_select_delegates ? "Automatic subset" : "Fixed panel"}</dd>
       <dt>Quorum</dt><dd>${workspace.minimum_successes}</dd>
+      <dt>Context</dt><dd>${workspace.context ? "Configured" : "None"}</dd>
     </dl>
     ${overlaps.length ? `<div class="warning">⚠ ${escapeHtml(overlaps.join("; "))}</div>` : ""}
+    ${workspace.context ? "" : '<div class="warning">⚠ No persistent workspace context is configured. You will need to repeat project constraints in each question.</div>'}
   `;
 }
 
