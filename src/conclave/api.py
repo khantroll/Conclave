@@ -209,6 +209,10 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Workspace not found")
         return store.list_runs(workspace_id)
 
+    @app.get("/api/runs", response_model=list[DeliberationRun])
+    async def list_all_runs() -> list[DeliberationRun]:
+        return store.list_runs()
+
     @app.get("/api/runs/{run_id}", response_model=DeliberationRun)
     async def get_run(run_id: str) -> DeliberationRun:
         run = store.get_run(run_id)
