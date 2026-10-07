@@ -119,3 +119,73 @@ async def test_failed_critic_does_not_block_arbiter():
     assert result.arbiter is not None
     assert result.arbiter.status == DelegateStatus.SUCCEEDED
     assert result.arbiter.raw_response == "final synthesis"
+
+
+async def test_retry_delegate_preserves_other_panel_results():
+    from conclave.models import DeliberationRequest, DeliberationResult, PanelResult
+    from conclave.providers.base import Provider, ProviderResponse
+
+    class CountingProvider(Provider):
+        def __init__(self, responses: list[str]):
+            self.responses = list(responses)
+            self.calls = 0
+
+        async def ask(self, prompt: str) -> ProviderResponse:
+            self.calls += 1
+            return ProviderResponse(text=self.responses.pop(0), model="counting")
+
+    target = CountingProvider(["retried answer"])
+    untouched = CountingProvider(["should never be called"])
+    critic = CountingProvider(["critic rerun"])
+    arbiter = CountingProvider(["arbiter rerun"])
+    orchestrator = Orchestrator(
+        {
+            "target": target,
+            "untouched": untouched,
+            "critic": critic,
+            "arbiter": arbiter,
+        }
+    )
+
+    request = DeliberationRequest(
+        question="Retry test",
+        delegates=["target", "untouched"],
+        critic="critic",
+        arbiter="arbiter",
+        minimum_successes=1,
+    )
+    prior = DeliberationResult(
+        panel=PanelResult(
+            question="Retry test",
+            delegates=[
+                DelegateResult(
+                    name="target",
+                    status=DelegateStatus.FAILED,
+                    error="temporary failure",
+                ),
+                DelegateResult(
+                    name="untouched",
+                    status=DelegateStatus.SUCCEEDED,
+                    raw_response="keep this response",
+                    model="original",
+                ),
+            ],
+            successful_count=1,
+            failed_count=1,
+            synthesizeable=True,
+        )
+    )
+
+    result = await orchestrator.retry_delegate(
+        request=request,
+        prior_result=prior,
+        delegate_name="target",
+    )
+
+    by_name = {item.name: item for item in result.panel.delegates}
+    assert by_name["target"].raw_response == "retried answer"
+    assert by_name["untouched"].raw_response == "keep this response"
+    assert target.calls == 1
+    assert untouched.calls == 0
+    assert critic.calls == 1
+    assert arbiter.calls == 1
