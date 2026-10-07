@@ -1,4 +1,9 @@
-from conclave.models import DeliberationResult, PanelResult, WorkspaceCreate
+from conclave.models import (
+    DeliberationRequest,
+    DeliberationResult,
+    PanelResult,
+    WorkspaceCreate,
+)
 from conclave.store import WorkspaceStore
 
 
@@ -47,9 +52,16 @@ def test_workspace_store_persists_run_history(tmp_path):
         )
     )
 
+    request = DeliberationRequest(
+        question="question",
+        delegates=["a"],
+        critic="critic",
+        arbiter="arbiter",
+    )
     saved = store.save_run(
         workspace_id=workspace.id,
         question="question",
+        request=request,
         result=result,
     )
 
@@ -57,6 +69,9 @@ def test_workspace_store_persists_run_history(tmp_path):
     assert fetched is not None
     assert fetched.workspace_id == workspace.id
     assert fetched.question == "question"
+    assert fetched.request is not None
+    assert fetched.request.delegates == ["a"]
+    assert fetched.request.critic == "critic"
     assert store.list_runs(workspace.id)[0].id == saved.id
 
 
