@@ -122,7 +122,7 @@ async def test_failed_critic_does_not_block_arbiter():
 
 
 async def test_retry_delegate_preserves_other_panel_results():
-    from conclave.models import DeliberationRequest, DeliberationResult, PanelResult
+    from conclave.models import DeliberationRequest, DeliberationResult, DelegateResult, PanelResult
     from conclave.providers.base import Provider, ProviderResponse
 
     class CountingProvider(Provider):
