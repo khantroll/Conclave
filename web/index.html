@@ -21,11 +21,15 @@
         <h2>Workspace</h2>
         <label for="workspaceSelect">Active workspace</label>
         <select id="workspaceSelect"></select>
-        <button id="refreshWorkspaces" class="secondary">Refresh</button>
+        <div class="row">
+          <button id="refreshWorkspaces" class="secondary">Refresh</button>
+          <button id="editWorkspace" class="secondary">Edit</button>
+          <button id="deleteWorkspace" class="danger">Delete</button>
+        </div>
       </section>
 
       <details class="panel">
-        <summary>Create workspace</summary>
+        <summary id="workspaceFormSummary">Create workspace</summary>
         <form id="workspaceForm">
           <label>Name<input id="workspaceName" required></label>
           <label>Description<input id="workspaceDescription"></label>
@@ -37,7 +41,10 @@
           <label>Arbiter<input id="workspaceArbiter" placeholder="openai" required></label>
           <label>Minimum successes<input id="workspaceQuorum" type="number" min="1" value="1"></label>
           <label class="checkbox-row"><input id="workspaceAutoSelect" type="checkbox"> Automatically choose a subset of delegates based on the question</label>
-          <button type="submit">Create</button>
+          <div class="row">
+            <button id="workspaceSubmit" type="submit">Create</button>
+            <button id="workspaceCancel" type="button" class="secondary hidden">Cancel edit</button>
+          </div>
         </form>
       </details>
 
