@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 
@@ -27,6 +28,7 @@ class ConclaveConfig(BaseModel):
 
 
 def load_config(path: str | Path | None = None) -> ConclaveConfig:
+    load_dotenv()
     resolved = Path(path or os.getenv("CONCLAVE_CONFIG_PATH", "conclave.json"))
     if not resolved.exists():
         return ConclaveConfig()
