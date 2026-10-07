@@ -151,7 +151,10 @@ class Orchestrator:
         )
 
         if not panel.synthesizeable:
-            return DeliberationResult(panel=panel)
+            return DeliberationResult(
+                panel=panel,
+                estimated_cost_usd=_total_cost(panel.delegates),
+            )
 
         critic: DelegateResult | None = None
         if request.critic:
@@ -179,7 +182,85 @@ class Orchestrator:
                 timeout_seconds=request.arbiter_timeout_seconds,
             )
         )
-        return DeliberationResult(panel=panel, critic=critic, arbiter=arbiter)
+        return DeliberationResult(
+            panel=panel,
+            critic=critic,
+            arbiter=arbiter,
+            estimated_cost_usd=_total_cost([*panel.delegates, critic, arbiter]),
+        )
+
+    async def retry_critic(
+        self,
+        *,
+        request: DeliberationRequest,
+        prior_result: DeliberationResult,
+    ) -> DeliberationResult:
+        if not request.critic:
+            raise ValueError("The original request did not configure a Critic")
+        if not prior_result.panel.synthesizeable:
+            raise ValueError("The Delegate panel does not satisfy quorum")
+
+        critic = await self._run_delegate(
+            DelegateRequest(
+                name=request.critic,
+                prompt=build_critic_prompt(
+                    question=request.question,
+                    delegate_results=prior_result.panel.delegates,
+                    workspace_context=request.workspace_context,
+                ),
+                timeout_seconds=request.critic_timeout_seconds,
+            )
+        )
+        arbiter = await self._run_delegate(
+            DelegateRequest(
+                name=request.arbiter,
+                prompt=build_arbiter_prompt(
+                    question=request.question,
+                    delegate_results=prior_result.panel.delegates,
+                    workspace_context=request.workspace_context,
+                    critic_result=critic,
+                ),
+                timeout_seconds=request.arbiter_timeout_seconds,
+            )
+        )
+        return DeliberationResult(
+            panel=prior_result.panel,
+            critic=critic,
+            arbiter=arbiter,
+            estimated_cost_usd=_total_cost(
+                [*prior_result.panel.delegates, critic, arbiter]
+            ),
+        )
+
+    async def retry_arbiter(
+        self,
+        *,
+        request: DeliberationRequest,
+        prior_result: DeliberationResult,
+    ) -> DeliberationResult:
+        if not prior_result.panel.synthesizeable:
+            raise ValueError("The Delegate panel does not satisfy quorum")
+
+        arbiter = await self._run_delegate(
+            DelegateRequest(
+                name=request.arbiter,
+                prompt=build_arbiter_prompt(
+                    question=request.question,
+                    delegate_results=prior_result.panel.delegates,
+                    workspace_context=request.workspace_context,
+                    critic_result=prior_result.critic,
+                ),
+                timeout_seconds=request.arbiter_timeout_seconds,
+            )
+        )
+        return DeliberationResult(
+            panel=prior_result.panel,
+            critic=prior_result.critic,
+            arbiter=arbiter,
+            estimated_cost_usd=_total_cost(
+                [*prior_result.panel.delegates, prior_result.critic, arbiter]
+            ),
+        )
 
     async def _run_delegate(self, delegate: DelegateRequest) -> DelegateResult:
         provider = self._providers.get(delegate.name)
