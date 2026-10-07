@@ -16,12 +16,14 @@ from .models import (
     DeliberationRun,
     DelegateSelection,
     ProviderDescriptor,
+    ProviderTestResult,
     RequestAnalysis,
     PanelRequest,
     PanelResult,
     Workspace,
     WorkspaceCreate,
     WorkspaceDeliberationRequest,
+    WorkspaceReplace,
 )
 from .orchestrator import Orchestrator
 from .providers.fake import FakeProvider
@@ -89,6 +91,8 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
                 model=item.model,
                 capabilities=item.capabilities or ["general"],
                 priority=item.priority,
+                input_cost_per_million=item.input_cost_per_million,
+                output_cost_per_million=item.output_cost_per_million,
                 source="configured",
             )
             for item in config.providers
@@ -117,6 +121,19 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
             ],
         }
 
+    @app.post("/api/providers/{provider_name}/test", response_model=ProviderTestResult)
+    async def test_provider(provider_name: str) -> ProviderTestResult:
+        if provider_name not in orchestrator.provider_names:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        result = await orchestrator.test_provider(provider_name)
+        return ProviderTestResult(
+            name=result.name,
+            status=result.status,
+            model=result.model,
+            latency_ms=result.latency_ms,
+            error=result.error,
+        )
+
     @app.post("/api/analyze", response_model=RequestAnalysis)
     async def analyze(request: AnalyzeRequest) -> RequestAnalysis:
         return analyze_request(request.question)
@@ -133,7 +150,7 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
 
     @app.post("/api/workspaces", response_model=Workspace, status_code=201)
     async def create_workspace(request: WorkspaceCreate) -> Workspace:
-        _validate_quorum(request.minimum_successes, len(request.delegates))
+        _validate_workspace(request, orchestrator.provider_names)
         return store.create(request)
 
     @app.get("/api/workspaces", response_model=list[Workspace])
@@ -146,6 +163,23 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
         if workspace is None:
             raise HTTPException(status_code=404, detail="Workspace not found")
         return workspace
+
+    @app.put("/api/workspaces/{workspace_id}", response_model=Workspace)
+    async def replace_workspace(
+        workspace_id: str,
+        request: WorkspaceReplace,
+    ) -> Workspace:
+        _validate_workspace(request, orchestrator.provider_names)
+        workspace = store.replace(workspace_id, request)
+        if workspace is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        return workspace
+
+    @app.delete("/api/workspaces/{workspace_id}", status_code=204)
+    async def delete_workspace(workspace_id: str) -> Response:
+        if not store.delete(workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        return Response(status_code=204)
 
 
     @app.post(
@@ -253,6 +287,19 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
         )
 
     return app
+
+
+def _validate_workspace(request: WorkspaceCreate, provider_names: list[str]) -> None:
+    _validate_quorum(request.minimum_successes, len(request.delegates))
+    known = set(provider_names)
+    missing = [name for name in request.delegates if name not in known]
+    if request.critic and request.critic not in known:
+        missing.append(request.critic)
+    if request.arbiter not in known:
+        missing.append(request.arbiter)
+    if missing:
+        names = ", ".join(sorted(set(missing)))
+        raise HTTPException(status_code=422, detail=f"Unknown provider(s): {names}")
 
 
 def _validate_quorum(minimum_successes: int, delegate_count: int) -> None:
