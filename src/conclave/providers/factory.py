@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+from ..config import ProviderConfig, read_api_key
+from .base import Provider
+from .openai_compatible import OpenAICompatibleProvider
+
+
+def build_providers(configs: Iterable[ProviderConfig]) -> dict[str, Provider]:
+    providers: dict[str, Provider] = {}
+
+    for config in configs:
+        if config.name in providers:
+            raise ValueError(f"Duplicate provider name: {config.name}")
+
+        if config.kind == "openai_compatible":
+            providers[config.name] = OpenAICompatibleProvider(
+                base_url=config.base_url,
+                model=config.model,
+                api_key=read_api_key(config),
+                system_prompt=config.system_prompt,
+                extra_headers=config.extra_headers,
+            )
+            continue
+
+        raise ValueError(f"Unsupported provider kind: {config.kind}")
+
+    return providers
