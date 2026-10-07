@@ -164,3 +164,13 @@ summary { cursor: pointer; font-weight: 700; }
 .muted-block {
   color: #d7dce5;
 }
+
+.provider-notice {
+  margin-top: .65rem;
+  color: #aeb7c6;
+  font-size: .84rem;
+  line-height: 1.35;
+}
+.provider-notice.warning {
+  color: #ffd2a8;
+}
