@@ -1,5 +1,5 @@
 from conclave.models import DelegateResult, DelegateStatus
-from conclave.prompts import build_arbiter_prompt, build_delegate_prompt
+from conclave.prompts import build_arbiter_prompt, build_critic_prompt, build_delegate_prompt
 
 
 def test_delegate_prompt_includes_role_context_and_question():
@@ -15,8 +15,8 @@ def test_delegate_prompt_includes_role_context_and_question():
     assert "independently" in prompt
 
 
-def test_arbiter_prompt_includes_only_successful_responses():
-    prompt = build_arbiter_prompt(
+def test_critic_prompt_excludes_failed_provider_error():
+    prompt = build_critic_prompt(
         question="Which design?",
         delegate_results=[
             DelegateResult(
@@ -28,12 +28,35 @@ def test_arbiter_prompt_includes_only_successful_responses():
             DelegateResult(
                 name="b",
                 status=DelegateStatus.FAILED,
-                error="boom",
+                error="secret provider failure",
             ),
         ],
     )
 
     assert "Use design A." in prompt
-    assert "model-a" in prompt
-    assert "boom" not in prompt
+    assert "secret provider failure" not in prompt
+    assert "Do not synthesize a final answer" in prompt
+
+
+def test_arbiter_prompt_includes_successful_critic():
+    critic = DelegateResult(
+        name="critic",
+        status=DelegateStatus.SUCCEEDED,
+        raw_response="The evidence for A is weak.",
+    )
+    prompt = build_arbiter_prompt(
+        question="Which design?",
+        delegate_results=[
+            DelegateResult(
+                name="a",
+                status=DelegateStatus.SUCCEEDED,
+                raw_response="Use design A.",
+                model="model-a",
+            ),
+        ],
+        critic_result=critic,
+    )
+
+    assert "Use design A." in prompt
+    assert "The evidence for A is weak." in prompt
     assert "Prefer evidence" in prompt
