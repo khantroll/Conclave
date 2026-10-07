@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 
 from .config import load_config
-from .models import PanelRequest, PanelResult
+from .models import DeliberationRequest, DeliberationResult, PanelRequest, PanelResult
 from .orchestrator import Orchestrator
 from .providers.fake import FakeProvider
 from .providers.factory import build_providers
@@ -24,6 +24,7 @@ def create_app() -> FastAPI:
     providers = {
         "demo-a": FakeProvider("Delegate A response"),
         "demo-b": FakeProvider("Delegate B response"),
+        "demo-arbiter": FakeProvider("Synthesized demo response"),
         **configured,
     }
     orchestrator = Orchestrator(providers)
@@ -47,6 +48,15 @@ def create_app() -> FastAPI:
                 detail="minimum_successes cannot exceed the number of delegates",
             )
         return await orchestrator.run_panel(request)
+
+    @app.post("/api/deliberate", response_model=DeliberationResult)
+    async def deliberate(request: DeliberationRequest) -> DeliberationResult:
+        if request.minimum_successes > len(request.delegates):
+            raise HTTPException(
+                status_code=422,
+                detail="minimum_successes cannot exceed the number of delegates",
+            )
+        return await orchestrator.deliberate(request)
 
     return app
 
