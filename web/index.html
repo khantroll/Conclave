@@ -53,8 +53,12 @@
       </details>
 
       <section class="panel">
-        <h2>Providers</h2>
+        <div class="row">
+          <h2>Providers</h2>
+          <span id="providerMode" class="badge muted"></span>
+        </div>
         <small>Connection tests send a tiny real request for configured API providers.</small>
+        <div id="providerNotice" class="provider-notice"></div>
         <div id="providers" class="chips"></div>
       </section>
     </aside>
