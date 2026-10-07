@@ -13,7 +13,7 @@ from .models import (
     PanelRequest,
     PanelResult,
 )
-from .prompts import build_arbiter_prompt, build_delegate_prompt
+from .prompts import build_arbiter_prompt, build_critic_prompt, build_delegate_prompt
 from .providers.base import Provider
 
 
@@ -64,10 +64,25 @@ class Orchestrator:
         if not panel.synthesizeable:
             return DeliberationResult(panel=panel)
 
+        critic: DelegateResult | None = None
+        if request.critic:
+            critic = await self._run_delegate(
+                DelegateRequest(
+                    name=request.critic,
+                    prompt=build_critic_prompt(
+                        question=request.question,
+                        delegate_results=panel.delegates,
+                        workspace_context=request.workspace_context,
+                    ),
+                    timeout_seconds=request.critic_timeout_seconds,
+                )
+            )
+
         arbiter_prompt = build_arbiter_prompt(
             question=request.question,
             delegate_results=panel.delegates,
             workspace_context=request.workspace_context,
+            critic_result=critic,
         )
         arbiter = await self._run_delegate(
             DelegateRequest(
@@ -76,7 +91,7 @@ class Orchestrator:
                 timeout_seconds=request.arbiter_timeout_seconds,
             )
         )
-        return DeliberationResult(panel=panel, arbiter=arbiter)
+        return DeliberationResult(panel=panel, critic=critic, arbiter=arbiter)
 
     async def _run_delegate(self, delegate: DelegateRequest) -> DelegateResult:
         provider = self._providers.get(delegate.name)
