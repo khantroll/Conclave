@@ -105,14 +105,16 @@ The current pre-alpha contains:
 - persisted workspace deliberation history with raw delegate/Critic/Arbiter results
 - saved request snapshots so old runs can be reproduced safely
 - isolated retry of one Delegate without rerunning successful Delegates
-- deterministic request-complexity analysis that recommends panel size
+- deterministic request-complexity analysis that recommends panel size and desired capabilities
+- capability-aware automatic Delegate selection within a workspace
+- provider capability/priority metadata for role-aware routing
 - provider discovery and model/token metadata
 - a first usable browser console for workspaces, questions, history, results, and retries
 - deterministic fake providers for testing
 - API, persistence, prompt, provider, analyzer, and orchestration tests
 - GitHub Actions CI
 
-Automatic provider/model selection, richer cost accounting, workspace editing polish, and native provider adapters where needed are still ahead.
+Automatic Delegate selection is now available at the workspace level. Richer cost accounting, workspace editing polish, provider health scoring, and native provider adapters where needed are still ahead.
 
 ## Development
 
@@ -164,6 +166,11 @@ Potential implementation stack:
 - **Local providers:** LM Studio/Ollama-style OpenAI-compatible endpoints
 
 Conclave intentionally owns orchestration, failure isolation, Critic/Arbiter behavior, and persistence even when a gateway handles provider-specific API differences.
+
+
+### Capability-aware routing
+
+Configured providers can declare capability tags such as `general`, `reasoning`, `critical`, `research`, `code`, `creative`, `fast`, or `privacy`, plus a numeric priority. A workspace may enable automatic Delegate selection; Conclave then analyzes the question, chooses an appropriate panel size, and ranks only that workspace's allowed Delegates against the inferred capabilities. The selection remains deterministic and inspectable rather than hidden behind another model call.
 
 ## Failure behavior
 
