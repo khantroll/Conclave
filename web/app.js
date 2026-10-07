@@ -340,18 +340,30 @@ async function retryDelegate(name, button) {
 async function loadHistory() {
   if (!activeWorkspaceId) {
     $("history").textContent = "No workspace selected.";
+    await loadAllHistory();
     return;
   }
   const runs = await (await api(`/api/workspaces/${activeWorkspaceId}/runs`)).json();
-  $("history").innerHTML = runs.length
+  renderHistory("history", runs);
+  await loadAllHistory();
+}
+
+async function loadAllHistory() {
+  const runs = await (await api("/api/runs")).json();
+  renderHistory("allHistory", runs);
+}
+
+function renderHistory(targetId, runs) {
+  const target = $(targetId);
+  target.innerHTML = runs.length
     ? runs.map(run => `
         <div class="history-item" data-run-id="${run.id}">
           <strong>${escapeHtml(run.question)}</strong>
-          <small>${new Date(run.created_at).toLocaleString()} · ${run.id.slice(0, 8)}${formatCost(run.result?.estimated_cost_usd) ? " · " + formatCost(run.result.estimated_cost_usd) : ""}</small>
+          <small>${new Date(run.created_at).toLocaleString()} · ${run.id.slice(0, 8)}${run.workspace_id ? "" : " · detached"}${formatCost(run.result?.estimated_cost_usd) ? " · " + formatCost(run.result.estimated_cost_usd) : ""}</small>
         </div>`).join("")
     : "<p>No runs yet.</p>";
 
-  document.querySelectorAll(".history-item").forEach(item => {
+  target.querySelectorAll(".history-item").forEach(item => {
     item.addEventListener("click", async () => {
       const run = await (await api(`/api/runs/${item.dataset.runId}`)).json();
       $("question").value = run.question;
