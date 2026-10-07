@@ -98,3 +98,12 @@ summary { cursor: pointer; font-weight: 700; }
 @media (max-width: 800px) {
   main { grid-template-columns: 1fr; }
 }
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+}
+.checkbox-row input { width: auto; }
+.provider-detail { display: grid; gap: .1rem; }
+.provider-detail small { font-size: .72rem; }
