@@ -46,7 +46,8 @@ Conclave will reuse the **patterns**, not create a code-level dependency between
 1. **Now:** generic OpenAI-compatible adapter.
 2. **Next:** validate real calls through at least one direct compatible provider and one LiteLLM/OpenRouter route.
 3. **As needed:** add native adapters only where they unlock capabilities or reliability that the compatibility layer cannot provide.
-4. **Later:** provider health, model discovery, pricing metadata, and per-provider capability flags.
+4. **Implemented in pre-alpha:** explicit connection tests, optional pricing metadata, and per-provider capability/priority flags.
+5. **Later:** richer provider health history, automated model discovery, and native adapters only where compatibility gateways are insufficient.
 
 ## Architectural rule
 
