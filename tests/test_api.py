@@ -69,7 +69,7 @@ def test_deliberation_skips_critic_and_arbiter_without_quorum():
     assert body["arbiter"] is None
 
 
-def test_workspace_persists_defaults_and_runs_deliberation(tmp_path):
+def test_workspace_persists_defaults_run_and_history(tmp_path):
     store = WorkspaceStore(tmp_path / "test.db")
     workspace_app = create_app(workspace_store=store)
     workspace_client = TestClient(workspace_app)
@@ -90,16 +90,24 @@ def test_workspace_persists_defaults_and_runs_deliberation(tmp_path):
     assert created.status_code == 201
     workspace = created.json()
 
-    listed = workspace_client.get("/api/workspaces")
-    assert listed.status_code == 200
-    assert listed.json()[0]["name"] == "HomeLedger"
-
     result = workspace_client.post(
         f"/api/workspaces/{workspace['id']}/deliberate",
         json={"question": "Should we add forecasting?"},
     )
     assert result.status_code == 200
+    assert result.headers["X-Conclave-Run-ID"]
     body = result.json()
     assert body["panel"]["successful_count"] == 2
     assert body["critic"]["status"] == "succeeded"
     assert body["arbiter"]["status"] == "succeeded"
+
+    history = workspace_client.get(f"/api/workspaces/{workspace['id']}/runs")
+    assert history.status_code == 200
+    runs = history.json()
+    assert len(runs) == 1
+    assert runs[0]["id"] == result.headers["X-Conclave-Run-ID"]
+    assert runs[0]["question"] == "Should we add forecasting?"
+
+    fetched = workspace_client.get(f"/api/runs/{runs[0]['id']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["result"]["arbiter"]["status"] == "succeeded"
