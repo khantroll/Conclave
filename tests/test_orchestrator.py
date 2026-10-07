@@ -189,3 +189,27 @@ async def test_retry_delegate_preserves_other_panel_results():
     assert untouched.calls == 0
     assert critic.calls == 1
     assert arbiter.calls == 1
+
+
+async def test_deliberation_sums_available_cost_estimates():
+    from conclave.models import DeliberationRequest
+
+    orchestrator = Orchestrator(
+        {
+            "delegate": FakeProvider("answer", estimated_cost_usd=0.01),
+            "critic": FakeProvider("critique", estimated_cost_usd=0.02),
+            "arbiter": FakeProvider("final", estimated_cost_usd=0.03),
+        }
+    )
+
+    result = await orchestrator.deliberate(
+        DeliberationRequest(
+            question="cost test",
+            delegates=["delegate"],
+            critic="critic",
+            arbiter="arbiter",
+        )
+    )
+
+    assert result.estimated_cost_usd == 0.06
+    assert result.panel.delegates[0].estimated_cost_usd == 0.01
