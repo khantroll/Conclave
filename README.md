@@ -73,7 +73,7 @@ The first useful version should stay deliberately small:
 - Per-provider timeout and retry
 - Partial-success handling
 - Raw response viewer
-- Structured response normalization
+- Provider/result normalization while preserving raw responses and exact prompts
 - Critic/disagreement pass
 - Configurable synthesis/authority model
 - Basic token, latency, and cost accounting
@@ -164,7 +164,7 @@ Provider Gateway
 Potential implementation stack:
 
 - **Backend:** Python + FastAPI
-- **Frontend:** React/Next.js or another lightweight web UI
+- **Frontend:** lightweight vanilla HTML/CSS/JS for the pre-alpha; a framework can be introduced later if the UI outgrows it
 - **Storage:** SQLite
 - **Provider gateway:** optional; LiteLLM/OpenRouter can sit behind Conclave's OpenAI-compatible adapter
 - **Local providers:** LM Studio/Ollama-style OpenAI-compatible endpoints
