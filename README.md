@@ -103,12 +103,16 @@ The current pre-alpha contains:
 - deterministic role/context prompt construction
 - SQLite-backed persistent workspaces with default delegates, roles, Critic, Arbiter, and project context
 - persisted workspace deliberation history with raw delegate/Critic/Arbiter results
+- saved request snapshots so old runs can be reproduced safely
+- isolated retry of one Delegate without rerunning successful Delegates
+- deterministic request-complexity analysis that recommends panel size
 - provider discovery and model/token metadata
+- a first usable browser console for workspaces, questions, history, results, and retries
 - deterministic fake providers for testing
-- API, persistence, prompt, provider, and orchestration tests
+- API, persistence, prompt, provider, analyzer, and orchestration tests
 - GitHub Actions CI
 
-A web frontend, request complexity/router logic, independent retry controls, richer cost accounting, and native provider adapters where needed are still ahead.
+Automatic provider/model selection, richer cost accounting, workspace editing polish, and native provider adapters where needed are still ahead.
 
 ## Development
 
@@ -122,9 +126,9 @@ pytest -q
 uvicorn conclave.api:app --reload
 ```
 
-Then open the FastAPI docs at `http://127.0.0.1:8000/docs`.
+Then open the Conclave web console at `http://127.0.0.1:8000/` or the FastAPI docs at `http://127.0.0.1:8000/docs`.
 
-The current demo panel accepts delegates named `demo-a` and `demo-b`; they exist only to exercise orchestration before real provider configuration is added.
+The built-in `demo-*` providers exist only to exercise orchestration before real provider configuration is added.
 
 ## Likely architecture
 
