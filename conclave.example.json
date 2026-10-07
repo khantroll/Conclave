@@ -5,27 +5,35 @@
       "kind": "openai_compatible",
       "base_url": "https://api.openai.com/v1",
       "model": "gpt-5.6",
-      "api_key_env": "OPENAI_API_KEY"
+      "api_key_env": "OPENAI_API_KEY",
+      "capabilities": ["general", "reasoning", "code"],
+      "priority": 20
     },
     {
       "name": "openrouter-claude",
       "kind": "openai_compatible",
       "base_url": "https://openrouter.ai/api/v1",
       "model": "anthropic/claude-sonnet-4.5",
-      "api_key_env": "OPENROUTER_API_KEY"
+      "api_key_env": "OPENROUTER_API_KEY",
+      "capabilities": ["general", "critical", "creative"],
+      "priority": 30
     },
     {
       "name": "litellm-gemini",
       "kind": "openai_compatible",
       "base_url": "http://127.0.0.1:4000/v1",
       "model": "gemini-pro",
-      "api_key_env": "LITELLM_API_KEY"
+      "api_key_env": "LITELLM_API_KEY",
+      "capabilities": ["general", "research"],
+      "priority": 30
     },
     {
       "name": "local",
       "kind": "openai_compatible",
       "base_url": "http://127.0.0.1:1234/v1",
-      "model": "local-model"
+      "model": "local-model",
+      "capabilities": ["general", "privacy", "fast"],
+      "priority": 80
     }
   ]
 }
