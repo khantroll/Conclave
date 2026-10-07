@@ -25,6 +25,8 @@ async def test_openai_compatible_provider_returns_text_and_usage():
             base_url="https://example.test/v1",
             model="test-model",
             api_key="secret",
+            input_cost_per_million=2.0,
+            output_cost_per_million=8.0,
             client=client,
         )
         response = await provider.ask("hi")
@@ -32,6 +34,7 @@ async def test_openai_compatible_provider_returns_text_and_usage():
     assert response.text == "hello"
     assert response.model == "test-model-2026"
     assert response.usage["total_tokens"] == 5
+    assert response.estimated_cost_usd == pytest.approx(0.000022)
 
 
 async def test_openai_compatible_provider_surfaces_http_error():
