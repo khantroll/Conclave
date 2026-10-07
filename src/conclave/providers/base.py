@@ -10,6 +10,7 @@ class ProviderResponse:
     text: str
     model: str | None = None
     usage: dict[str, Any] = field(default_factory=dict)
+    estimated_cost_usd: float | None = None
 
 
 class Provider(ABC):
