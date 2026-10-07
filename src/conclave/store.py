@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from .models import DeliberationResult, DeliberationRun, Workspace, WorkspaceCreate
+from .models import (
+    DeliberationRequest,
+    DeliberationResult,
+    DeliberationRun,
+    Workspace,
+    WorkspaceCreate,
+)
 
 
 class WorkspaceStore:
@@ -46,11 +52,18 @@ class WorkspaceStore:
                     id TEXT PRIMARY KEY,
                     workspace_id TEXT,
                     question TEXT NOT NULL,
+                    request_json TEXT,
                     result_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(workspace_id) REFERENCES workspaces(id)
                 )
                 """
+            )
+            self._ensure_column(
+                connection,
+                table="deliberation_runs",
+                column="request_json",
+                definition="TEXT",
             )
             connection.execute(
                 """
@@ -58,6 +71,21 @@ class WorkspaceStore:
                 ON deliberation_runs(workspace_id, created_at DESC)
                 """
             )
+
+    def _ensure_column(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        table: str,
+        column: str,
+        definition: str,
+    ) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def create(self, request: WorkspaceCreate) -> Workspace:
         now = _now()
@@ -110,12 +138,14 @@ class WorkspaceStore:
         *,
         question: str,
         result: DeliberationResult,
+        request: DeliberationRequest | None = None,
         workspace_id: str | None = None,
     ) -> DeliberationRun:
         run = DeliberationRun(
             id=str(uuid4()),
             workspace_id=workspace_id,
             question=question,
+            request=request,
             result=result,
             created_at=_now(),
         )
@@ -123,13 +153,14 @@ class WorkspaceStore:
             connection.execute(
                 """
                 INSERT INTO deliberation_runs (
-                    id, workspace_id, question, result_json, created_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    id, workspace_id, question, request_json, result_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.id,
                     run.workspace_id,
                     run.question,
+                    run.request.model_dump_json() if run.request else None,
                     run.result.model_dump_json(),
                     run.created_at,
                 ),
@@ -176,10 +207,16 @@ class WorkspaceStore:
         )
 
     def _run_from_row(self, row: sqlite3.Row) -> DeliberationRun:
+        request_json = row["request_json"] if "request_json" in row.keys() else None
         return DeliberationRun(
             id=row["id"],
             workspace_id=row["workspace_id"],
             question=row["question"],
+            request=(
+                DeliberationRequest.model_validate_json(request_json)
+                if request_json
+                else None
+            ),
             result=DeliberationResult.model_validate_json(row["result_json"]),
             created_at=row["created_at"],
         )
