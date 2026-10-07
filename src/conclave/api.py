@@ -291,6 +291,15 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
 
 def _validate_workspace(request: WorkspaceCreate, provider_names: list[str]) -> None:
     _validate_quorum(request.minimum_successes, len(request.delegates))
+    if len(set(request.delegates)) != len(request.delegates):
+        raise HTTPException(status_code=422, detail="Delegates must be unique")
+    unknown_roles = sorted(set(request.roles) - set(request.delegates))
+    if unknown_roles:
+        names = ", ".join(unknown_roles)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Role configured for non-delegate provider(s): {names}",
+        )
     known = set(provider_names)
     missing = [name for name in request.delegates if name not in known]
     if request.critic and request.critic not in known:
