@@ -21,6 +21,8 @@ def build_providers(configs: Iterable[ProviderConfig]) -> dict[str, Provider]:
                 api_key=read_api_key(config),
                 system_prompt=config.system_prompt,
                 extra_headers=config.extra_headers,
+                input_cost_per_million=config.input_cost_per_million,
+                output_cost_per_million=config.output_cost_per_million,
             )
             continue
 
