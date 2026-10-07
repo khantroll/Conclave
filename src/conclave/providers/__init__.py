@@ -1,4 +1,12 @@
-from .base import Provider
+from .base import Provider, ProviderResponse
 from .fake import FakeProvider
+from .factory import build_providers
+from .openai_compatible import OpenAICompatibleProvider
 
-__all__ = ["Provider", "FakeProvider"]
+__all__ = [
+    "Provider",
+    "ProviderResponse",
+    "FakeProvider",
+    "OpenAICompatibleProvider",
+    "build_providers",
+]
