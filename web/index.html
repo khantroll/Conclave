@@ -53,6 +53,7 @@
 
       <section class="panel">
         <h2>Providers</h2>
+        <small>Connection tests send a tiny real request for configured API providers.</small>
         <div id="providers" class="chips"></div>
       </section>
     </aside>
@@ -79,6 +80,7 @@
             <button id="downloadRun" class="secondary hidden">Download run JSON</button>
           </div>
         </div>
+        <div id="arbiterMeta" class="meta"></div>
         <pre id="arbiterAnswer"></pre>
         <button id="retryArbiter" class="secondary hidden">Retry Arbiter only</button>
         <details id="arbiterPromptDetails" class="prompt-details hidden">
@@ -89,6 +91,7 @@
 
       <section id="criticSection" class="panel hidden">
         <h2>Critic audit</h2>
+        <div id="criticMeta" class="meta"></div>
         <pre id="criticAnswer"></pre>
         <button id="retryCritic" class="secondary hidden">Retry Critic + Arbiter</button>
         <details id="criticPromptDetails" class="prompt-details hidden">
