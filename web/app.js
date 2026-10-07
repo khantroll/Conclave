@@ -127,7 +127,8 @@ function renderWorkspaceSummary() {
 
 function parseRoles(text) {
   const roles = {};
-  for (const line of text.split("\n")) {
+  const normalized = String(text || "").replaceAll("\\n", "\n");
+  for (const line of normalized.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     const separator = trimmed.indexOf("=");
