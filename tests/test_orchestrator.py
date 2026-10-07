@@ -91,3 +91,31 @@ def test_provider_names_are_sorted():
         }
     )
     assert orchestrator.provider_names == ["alpha", "zeta"]
+
+
+async def test_failed_critic_does_not_block_arbiter():
+    from conclave.models import DeliberationRequest
+
+    orchestrator = Orchestrator(
+        {
+            "delegate": FakeProvider("delegate answer"),
+            "critic": FakeProvider(error=RuntimeError("critic unavailable")),
+            "arbiter": FakeProvider("final synthesis"),
+        }
+    )
+
+    result = await orchestrator.deliberate(
+        DeliberationRequest(
+            question="test",
+            delegates=["delegate"],
+            critic="critic",
+            arbiter="arbiter",
+        )
+    )
+
+    assert result.panel.synthesizeable is True
+    assert result.critic is not None
+    assert result.critic.status == DelegateStatus.FAILED
+    assert result.arbiter is not None
+    assert result.arbiter.status == DelegateStatus.SUCCEEDED
+    assert result.arbiter.raw_response == "final synthesis"
