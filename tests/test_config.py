@@ -5,6 +5,7 @@ import pytest
 from conclave.config import ProviderConfig, load_config, read_api_key
 from conclave.providers.factory import build_providers
 from conclave.providers.openai_compatible import OpenAICompatibleProvider
+from conclave.providers.unavailable import UnavailableProvider
 
 
 def test_load_config_and_build_provider(tmp_path, monkeypatch):
@@ -57,3 +58,17 @@ def test_read_api_key_requires_declared_environment_variable(monkeypatch):
 def test_missing_config_is_empty(tmp_path):
     config = load_config(tmp_path / "does-not-exist.json")
     assert config.providers == []
+
+
+def test_build_provider_keeps_missing_key_as_unavailable(monkeypatch):
+    monkeypatch.delenv("MISSING_PROVIDER_KEY", raising=False)
+    config = ProviderConfig(
+        name="missing-key",
+        base_url="https://example.test/v1",
+        model="model",
+        api_key_env="MISSING_PROVIDER_KEY",
+    )
+
+    providers = build_providers([config])
+
+    assert isinstance(providers["missing-key"], UnavailableProvider)
