@@ -16,6 +16,8 @@ class ProviderConfig(BaseModel):
     api_key_env: str | None = None
     system_prompt: str | None = None
     extra_headers: dict[str, str] = Field(default_factory=dict)
+    capabilities: list[str] = Field(default_factory=list)
+    priority: int = 100
 
 
 class ConclaveConfig(BaseModel):
