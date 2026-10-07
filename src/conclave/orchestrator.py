@@ -42,6 +42,18 @@ class Orchestrator:
             synthesizeable=successful_count >= request.minimum_successes,
         )
 
+    async def test_provider(self, name: str, *, timeout_seconds: float = 20.0) -> DelegateResult:
+        return await self._run_delegate(
+            DelegateRequest(
+                name=name,
+                prompt=(
+                    "Respond with exactly: CONCLAVE_OK\n"
+                    "This is a provider connectivity test. Do not add anything else."
+                ),
+                timeout_seconds=timeout_seconds,
+            )
+        )
+
     async def deliberate(self, request: DeliberationRequest) -> DeliberationResult:
         panel_request = PanelRequest(
             question=request.question,
@@ -62,7 +74,10 @@ class Orchestrator:
         panel = await self.run_panel(panel_request)
 
         if not panel.synthesizeable:
-            return DeliberationResult(panel=panel)
+            return DeliberationResult(
+                panel=panel,
+                estimated_cost_usd=_total_cost(panel.delegates),
+            )
 
         critic: DelegateResult | None = None
         if request.critic:
@@ -91,7 +106,12 @@ class Orchestrator:
                 timeout_seconds=request.arbiter_timeout_seconds,
             )
         )
-        return DeliberationResult(panel=panel, critic=critic, arbiter=arbiter)
+        return DeliberationResult(
+            panel=panel,
+            critic=critic,
+            arbiter=arbiter,
+            estimated_cost_usd=_total_cost([*panel.delegates, critic, arbiter]),
+        )
 
     async def retry_delegate(
         self,
@@ -197,8 +217,20 @@ class Orchestrator:
             raw_response=response.text,
             model=response.model,
             usage=response.usage,
+            estimated_cost_usd=response.estimated_cost_usd,
             latency_ms=_elapsed_ms(started),
         )
+
+
+def _total_cost(results: list[DelegateResult | None]) -> float | None:
+    costs = [
+        result.estimated_cost_usd
+        for result in results
+        if result is not None and result.estimated_cost_usd is not None
+    ]
+    if not costs:
+        return None
+    return round(sum(costs), 8)
 
 
 def _elapsed_ms(started: float) -> int:
