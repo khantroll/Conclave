@@ -27,12 +27,14 @@ This checklist begins only after CI is green.
    - exact Delegate prompts are inspectable;
    - Critic and Arbiter outputs are shown;
    - Critic and Arbiter prompts are inspectable;
-   - run history reloads correctly after refreshing the browser.
+   - run history reloads correctly after refreshing the browser;
+   - **Download run JSON** exports the saved request/result snapshot.
 7. Enable automatic Delegate selection in the workspace.
 8. Analyze `What is RAID 10?` and confirm the preview recommends a one-model panel.
 9. Ask a more complex architecture/decision question and confirm the preview grows the panel appropriately.
 10. Edit the workspace, save it, reload the page, and confirm the changes persist.
 11. Delete a disposable workspace and confirm it disappears.
+12. Open **All run history** and confirm runs from a deleted workspace remain available as detached history.
 
 ## Phase 2 — failure isolation
 
@@ -43,6 +45,8 @@ The automated suite covers provider failure and timeout behavior, but a useful U
 3. Confirm the failed provider is shown as failed while successful Delegate output remains available.
 4. Confirm the run can still synthesize when quorum is satisfied.
 5. Click **Retry this delegate** and confirm successful Delegates are not rerun.
+6. Temporarily make the Critic fail, then confirm **Retry Critic + Arbiter** does not rerun Delegates.
+7. Temporarily make the Arbiter fail, then confirm **Retry Arbiter only** preserves the panel and Critic.
 
 ## Phase 3 — real providers
 
