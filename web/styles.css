@@ -174,3 +174,21 @@ summary { cursor: pointer; font-weight: 700; }
 .provider-notice.warning {
   color: #ffd2a8;
 }
+
+.provider-setup {
+  margin-top: .8rem;
+  border-top: 1px solid #2d3440;
+  padding-top: .7rem;
+}
+.provider-setup ol {
+  padding-left: 1.2rem;
+  color: #b8c0cd;
+  font-size: .84rem;
+  line-height: 1.45;
+}
+.provider-source {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #8f99aa;
+}
