@@ -41,10 +41,17 @@ class WorkspaceStore:
                     critic TEXT,
                     arbiter TEXT NOT NULL,
                     minimum_successes INTEGER NOT NULL,
+                    auto_select_delegates INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
                 """
+            )
+            self._ensure_column(
+                connection,
+                table="workspaces",
+                column="auto_select_delegates",
+                definition="INTEGER NOT NULL DEFAULT 0",
             )
             connection.execute(
                 """
@@ -100,8 +107,9 @@ class WorkspaceStore:
                 """
                 INSERT INTO workspaces (
                     id, name, description, context, delegates_json, roles_json,
-                    critic, arbiter, minimum_successes, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    critic, arbiter, minimum_successes, auto_select_delegates,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workspace.id,
@@ -113,6 +121,7 @@ class WorkspaceStore:
                     workspace.critic,
                     workspace.arbiter,
                     workspace.minimum_successes,
+                    1 if workspace.auto_select_delegates else 0,
                     workspace.created_at,
                     workspace.updated_at,
                 ),
@@ -202,6 +211,7 @@ class WorkspaceStore:
             critic=row["critic"],
             arbiter=row["arbiter"],
             minimum_successes=row["minimum_successes"],
+            auto_select_delegates=bool(row["auto_select_delegates"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
