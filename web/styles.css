@@ -57,6 +57,10 @@ button.secondary {
   background: #2a313d;
   color: #e8ecf2;
 }
+button.danger {
+  background: #65363b;
+  color: #ffe7e9;
+}
 button:disabled { opacity: .5; cursor: wait; }
 .row { display: flex; gap: .7rem; align-items: center; justify-content: space-between; }
 .row button { margin-top: .8rem; }
