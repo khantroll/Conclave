@@ -37,6 +37,19 @@ def test_request_analysis_recommends_panel_for_complex_question():
     assert body["complexity"] in {"complex", "deep"}
 
 
+def test_provider_connection_test():
+    response = client.post("/api/providers/demo-a/test")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "succeeded"
+    assert body["model"] == "fake-model"
+
+
+def test_unknown_provider_connection_test_is_404():
+    response = client.post("/api/providers/not-real/test")
+    assert response.status_code == 404
+
+
 def test_provider_names():
     response = client.get("/api/providers")
     assert response.status_code == 200
@@ -192,3 +205,53 @@ def test_auto_select_workspace_uses_smaller_panel_for_simple_question(tmp_path):
 
     saved = workspace_client.get(f"/api/runs/{run_id}").json()
     assert saved["request"]["delegates"] == ["demo-a"]
+
+
+def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_path):
+    store = WorkspaceStore(tmp_path / "crud.db")
+    workspace_app = create_app(workspace_store=store)
+    workspace_client = TestClient(workspace_app)
+
+    bad = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Bad",
+            "delegates": ["not-configured"],
+            "arbiter": "demo-arbiter",
+        },
+    )
+    assert bad.status_code == 422
+    assert "not-configured" in bad.json()["detail"]
+
+    created = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Editable",
+            "delegates": ["demo-a", "demo-b"],
+            "critic": "demo-critic",
+            "arbiter": "demo-arbiter",
+            "minimum_successes": 1,
+        },
+    )
+    assert created.status_code == 201
+    workspace = created.json()
+
+    replaced = workspace_client.put(
+        f"/api/workspaces/{workspace['id']}",
+        json={
+            "name": "Edited",
+            "description": "Changed",
+            "delegates": ["demo-a"],
+            "arbiter": "demo-arbiter",
+            "minimum_successes": 1,
+            "auto_select_delegates": True,
+        },
+    )
+    assert replaced.status_code == 200
+    assert replaced.json()["name"] == "Edited"
+    assert replaced.json()["delegates"] == ["demo-a"]
+    assert replaced.json()["auto_select_delegates"] is True
+
+    deleted = workspace_client.delete(f"/api/workspaces/{workspace['id']}")
+    assert deleted.status_code == 204
+    assert workspace_client.get(f"/api/workspaces/{workspace['id']}").status_code == 404
