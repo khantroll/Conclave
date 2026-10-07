@@ -18,6 +18,8 @@ def test_load_config_and_build_provider(tmp_path, monkeypatch):
                         "base_url": "http://localhost:4000/v1",
                         "model": "example-model",
                         "api_key_env": "TEST_GATEWAY_KEY",
+                        "capabilities": ["research", "general"],
+                        "priority": 25,
                     }
                 ]
             }
@@ -31,6 +33,8 @@ def test_load_config_and_build_provider(tmp_path, monkeypatch):
 
     assert list(providers) == ["gateway"]
     assert isinstance(providers["gateway"], OpenAICompatibleProvider)
+    assert config.providers[0].capabilities == ["research", "general"]
+    assert config.providers[0].priority == 25
 
 
 def test_read_api_key_requires_declared_environment_variable(monkeypatch):
