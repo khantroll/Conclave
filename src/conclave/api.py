@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .analyzer import analyze_request
 from .config import load_config
@@ -30,6 +33,13 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
         version="0.1.0",
         description="Deterministic multi-model deliberation and synthesis.",
     )
+
+    web_dir = Path(__file__).resolve().parents[2] / "web"
+    app.mount("/static", StaticFiles(directory=web_dir), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def web_console() -> FileResponse:
+        return FileResponse(web_dir / "index.html")
 
     config = load_config()
     configured = build_providers(config.providers)
