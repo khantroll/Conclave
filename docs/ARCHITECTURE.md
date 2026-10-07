@@ -27,17 +27,10 @@ Each delegate has its own:
 
 A failed delegate must not invalidate completed delegates.
 
-### Response Normalizer
-Converts provider results into a common internal representation while retaining the untouched raw response.
+### Response Normalization
+The current pre-alpha normalizes provider transport metadata (status, raw response, model, usage, cost, latency, error) while preserving the untouched raw response and exact prompt.
 
-Candidate normalized fields:
-- answer
-- key claims
-- recommendations
-- assumptions
-- risks
-- unknowns
-- citations/sources when present
+Semantic normalization into claims/recommendations/risks/assumptions remains deliberately deferred until real-model testing shows whether it improves synthesis enough to justify another transformation layer.
 
 ### Critic
 Receives the original question plus successful delegate outputs.
@@ -82,26 +75,24 @@ The run itself may be considered synthesizeable when a configurable minimum numb
 
 ## Provider abstraction
 
-LiteLLM is the leading candidate for the first provider gateway because it can reduce provider-specific integration work. This is not yet a locked decision.
+Conclave owns a small provider-neutral request/response abstraction. The first adapter targets OpenAI-compatible chat-completion endpoints, allowing direct compatible providers as well as gateways such as LiteLLM Proxy and OpenRouter.
 
-Conclave should retain its own provider-neutral request/response abstraction so replacing or bypassing the gateway later remains possible.
+LiteLLM is an optional gateway, not a hard application dependency. This keeps failure isolation, retries, prompt visibility, routing, and persistence under Conclave's control.
 
 ## Data model sketch
 
 Potential initial entities:
 
 - Workspace
-- Conversation
-- Query
-- ExecutionPlan
-- DelegateRun
-- RawResponse
-- Critique
-- Synthesis
-- ProviderConfig
-- ModelConfig
+- Workspace
+- DeliberationRun
+- DeliberationRequest snapshot
+- DelegateResult
+- Critic result
+- Arbiter result
+- ProviderConfig / ProviderDescriptor
 
-SQLite should be sufficient initially.
+SQLite is sufficient for the current single-user pre-alpha.
 
 ## Security assumptions
 
