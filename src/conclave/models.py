@@ -86,3 +86,11 @@ class WorkspaceDeliberationRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
     critic_timeout_seconds: float = Field(default=60.0, gt=0)
     arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
+
+
+class DeliberationRun(BaseModel):
+    id: str
+    workspace_id: str | None = None
+    question: str
+    result: DeliberationResult
+    created_at: str
