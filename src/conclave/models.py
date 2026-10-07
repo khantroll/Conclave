@@ -24,6 +24,7 @@ class DelegateRequest(BaseModel):
 class DelegateResult(BaseModel):
     name: str
     status: DelegateStatus
+    prompt: str | None = None
     raw_response: str | None = None
     model: str | None = None
     error: str | None = None
