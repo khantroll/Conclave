@@ -78,6 +78,8 @@ The first useful version should stay deliberately small:
 - Configurable synthesis/authority model
 - Basic token, latency, and cost accounting
 
+See [docs/MVP.md](docs/MVP.md) for the bounded first-release definition and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for current design notes.
+
 ### Explicitly not MVP
 
 - Free-form autonomous agent conversations
@@ -87,6 +89,37 @@ The first useful version should stay deliberately small:
 - Team/multi-tenant administration
 - Mobile clients
 - A marketplace of agent personalities
+
+## Current implementation
+
+The first scaffold now contains:
+
+- a FastAPI service
+- provider-neutral delegate abstraction
+- concurrent panel execution
+- independent per-delegate timeouts
+- partial-success handling
+- a fake provider for deterministic testing
+- API and orchestration smoke tests
+- GitHub Actions test workflow
+
+Real OpenAI/Anthropic/Gemini/LiteLLM adapters, prompt routing, criticism, synthesis, persistence, and the web UI are intentionally still ahead of this scaffold.
+
+## Development
+
+Requires Python 3.11+.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+pytest -q
+uvicorn conclave.api:app --reload
+```
+
+Then open the FastAPI docs at `http://127.0.0.1:8000/docs`.
+
+The current demo panel accepts delegates named `demo-a` and `demo-b`; they exist only to exercise orchestration before real provider configuration is added.
 
 ## Likely architecture
 
@@ -152,9 +185,9 @@ Conclave should not turn a single provider failure into a failed session.
 
 ## Status
 
-**Planning / pre-alpha.**
+**Pre-alpha / active scaffold.**
 
-The repository has been initialized to capture the product idea before implementation begins. The next step is to define a tightly bounded MVP and decide how much provider plumbing should be delegated to LiteLLM versus implemented directly.
+The orchestration skeleton is under development. The immediate goal is to prove reliable delegate execution and failure isolation before adding real provider integrations or UI complexity.
 
 ## License
 
