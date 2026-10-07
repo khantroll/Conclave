@@ -79,3 +79,18 @@ A suitable initial test is the question that motivated Conclave:
 > Evaluate whether a personal multi-model AI orchestration portal is worth building versus using existing products. Assess what should be delegated to gateways, what capabilities justify a custom layer, likely failure modes, whether model-specific prompt rewriting adds value, and whether persistent project context materially changes the answer. Be skeptical and preserve meaningful disagreement.
 
 That question is complex enough to exercise routing, independent perspectives, criticism, and synthesis.
+
+
+## Phase 4 — Gemini + Mistral + Groq comparison
+
+1. Copy `conclave.example.json` to `conclave.json`.
+2. Copy `.env.example` to `.env`.
+3. Populate `GEMINI_API_KEY`, `MISTRAL_API_KEY`, and `GROQ_API_KEY` locally. Never commit the values.
+4. Restart Conclave and confirm the provider panel reports three configured providers in addition to the demo providers.
+5. Test `gemini`, `mistral`, and `groq` individually.
+6. Create a fixed workspace with Delegates `gemini, mistral, groq`, Critic `mistral`, Arbiter `gemini`, and minimum successes `2`.
+7. Give each Delegate a distinct role rather than the same instructions.
+8. Run the same substantive decision question used in the demo smoke test.
+9. Compare the three untouched Delegate outputs, Critic audit, and Arbiter result.
+10. Export the run JSON and inspect actual model names, latency, usage, failures, and synthesis quality.
+11. Only after this passes, enable automatic Delegate selection and compare one-, two-, and three-Delegate routing.
