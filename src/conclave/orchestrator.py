@@ -287,11 +287,14 @@ class Orchestrator:
                 latency_ms=_elapsed_ms(started),
             )
         except Exception as exc:  # provider errors become data, not panel failures
+            message = str(exc).strip()
+            if not message:
+                message = f"{type(exc).__name__}: provider call failed without an error message"
             return DelegateResult(
                 name=delegate.name,
                 status=DelegateStatus.FAILED,
                 prompt=delegate.prompt,
-                error=str(exc),
+                error=message,
                 latency_ms=_elapsed_ms(started),
             )
 
