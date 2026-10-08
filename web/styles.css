@@ -192,3 +192,15 @@ summary { cursor: pointer; font-weight: 700; }
   letter-spacing: .04em;
   color: #8f99aa;
 }
+
+.provider-test-detail {
+  margin-top: .7rem;
+  min-height: 1.1rem;
+  color: #aeb7c6;
+  font-size: .82rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.provider-test-detail.error {
+  color: #ffb9b9;
+}
