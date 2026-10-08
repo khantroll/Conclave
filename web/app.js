@@ -70,12 +70,18 @@ async function testProvider(name, button) {
     button.textContent = result.status === "succeeded"
       ? `OK ${result.latency_ms ?? ""}ms`
       : result.status;
-    $("status").textContent = result.error
+    const detail = result.error
       ? `${name}: ${result.error}`
       : `${name} connected successfully.`;
+    $("status").textContent = detail;
+    $("providerTestDetail").textContent = detail;
+    $("providerTestDetail").classList.toggle("error", Boolean(result.error));
   } catch (error) {
     button.textContent = "Failed";
-    $("status").textContent = `${name}: ${error.message}`;
+    const detail = `${name}: ${error.message || error.name || "provider test failed"}`;
+    $("status").textContent = detail;
+    $("providerTestDetail").textContent = detail;
+    $("providerTestDetail").classList.add("error");
   } finally {
     setTimeout(() => {
       button.textContent = original;
