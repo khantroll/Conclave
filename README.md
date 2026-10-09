@@ -205,9 +205,11 @@ Conclave should not turn a single provider failure into a failed session.
 
 ## Status
 
-**Pre-alpha / ready for staged manual testing once CI is green.**
+**Pre-alpha / real-provider MVP pipeline validated.**
 
-The deterministic orchestration path, persistence, routing, failure isolation, retries, cost/latency capture, and first browser console are implemented. The next meaningful uncertainty is how the system behaves with real provider credentials and real model responses.
+The deterministic orchestration path, persistence, routing, failure isolation, retries, cost/latency capture, and browser console are implemented. Manual testing has now produced a complete real-provider run through multiple Delegate responses, a real Critic pass, and a real Arbiter synthesis.
+
+The main remaining uncertainties are reliability and product quality rather than architectural viability: transient-provider retry/backoff, provider-specific quota/capacity behavior, routing quality, synthesis quality, and whether Conclave consistently reduces enough human copy/paste and comparison work to justify continued expansion.
 
 ## License
 
