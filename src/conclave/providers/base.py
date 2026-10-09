@@ -11,6 +11,7 @@ class ProviderResponse:
     model: str | None = None
     usage: dict[str, Any] = field(default_factory=dict)
     estimated_cost_usd: float | None = None
+    attempts: int = 1
 
 
 class Provider(ABC):
