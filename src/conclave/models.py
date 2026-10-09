@@ -53,6 +53,7 @@ class DeliberationRequest(BaseModel):
     delegates: list[str] = Field(min_length=1)
     arbiter: str = Field(min_length=1)
     critic: str | None = None
+    critic_fallbacks: list[str] = Field(default_factory=list)
     roles: dict[str, str] = Field(default_factory=dict)
     workspace_context: str | None = None
     minimum_successes: int = Field(default=1, ge=1)
@@ -75,7 +76,10 @@ class WorkspaceCreate(BaseModel):
     delegates: list[str] = Field(min_length=1)
     roles: dict[str, str] = Field(default_factory=dict)
     critic: str | None = None
+    critic_fallbacks: list[str] = Field(default_factory=list)
     arbiter: str = Field(min_length=1)
+    arbiter_fallbacks: list[str] = Field(default_factory=list)
+    arbiter_fallbacks: list[str] = Field(default_factory=list)
     minimum_successes: int = Field(default=1, ge=1)
     auto_select_delegates: bool = False
 
