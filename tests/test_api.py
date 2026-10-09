@@ -48,6 +48,12 @@ def test_provider_connection_test():
     assert body["model"] == "fake-model"
 
 
+def test_all_configured_providers_endpoint():
+    response = client.post("/api/providers/test-all")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_unknown_provider_connection_test_is_404():
     response = client.post("/api/providers/not-real/test")
     assert response.status_code == 404
