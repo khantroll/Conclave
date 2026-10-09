@@ -65,3 +65,44 @@ async def test_openai_compatible_provider_rejects_missing_content():
         )
         with pytest.raises(RuntimeError, match="no chat-completion content"):
             await provider.ask("hi")
+
+
+def test_default_client_disables_internal_httpx_timeout(monkeypatch):
+    captured = {}
+
+    class DummyResponse:
+        is_error = False
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": "ok"}}],
+                "model": "model-x",
+                "usage": {},
+            }
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            captured["timeout"] = kwargs.get("timeout")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return DummyResponse()
+
+    monkeypatch.setattr("conclave.providers.openai_compatible.httpx.AsyncClient", DummyClient)
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1",
+        model="model-x",
+        api_key="secret",
+    )
+
+    import asyncio
+
+    result = asyncio.run(provider.ask("hello"))
+    assert result.text == "ok"
+    assert captured["timeout"] is None
