@@ -101,7 +101,8 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
     }
     orchestrator = Orchestrator(providers)
     store = workspace_store or WorkspaceStore(
-        os.getenv("CONCLAVE_DB_PATH", "conclave.db")
+        os.getenv("CONCLAVE_DB_PATH", "conclave.db"),
+        run_log_dir=os.getenv("CONCLAVE_RUN_LOG_DIR", "run_logs"),
     )
 
     @app.get("/health")
