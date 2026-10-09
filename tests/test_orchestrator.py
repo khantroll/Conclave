@@ -327,3 +327,37 @@ async def test_retry_arbiter_preserves_panel_and_critic():
     assert result.critic is critic
     assert result.arbiter is not None
     assert result.arbiter.raw_response == "new final"
+
+
+async def test_critic_and_arbiter_fallbacks_are_used():
+    from conclave.models import DeliberationRequest
+
+    orchestrator = Orchestrator(
+        {
+            "delegate": FakeProvider("delegate answer"),
+            "critic-primary": FakeProvider(error=RuntimeError("critic down")),
+            "critic-fallback": FakeProvider("fallback critique"),
+            "arbiter-primary": FakeProvider(error=RuntimeError("arbiter down")),
+            "arbiter-fallback": FakeProvider("fallback final"),
+        }
+    )
+
+    result = await orchestrator.deliberate(
+        DeliberationRequest(
+            question="fallback test",
+            delegates=["delegate"],
+            critic="critic-primary",
+            critic_fallbacks=["critic-fallback"],
+            arbiter="arbiter-primary",
+            arbiter_fallbacks=["arbiter-fallback"],
+        )
+    )
+
+    assert result.critic is not None
+    assert result.critic.name == "critic-fallback"
+    assert result.critic.status == DelegateStatus.SUCCEEDED
+    assert result.critic.raw_response == "fallback critique"
+    assert result.arbiter is not None
+    assert result.arbiter.name == "arbiter-fallback"
+    assert result.arbiter.status == DelegateStatus.SUCCEEDED
+    assert result.arbiter.raw_response == "fallback final"
