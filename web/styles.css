@@ -204,3 +204,12 @@ summary { cursor: pointer; font-weight: 700; }
 .provider-test-detail.error {
   color: #ffb9b9;
 }
+
+.provider-status {
+  min-height: .9rem;
+  color: #9dd9b4;
+  font-size: .72rem;
+}
+.provider-status.error {
+  color: #ffb9b9;
+}
