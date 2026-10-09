@@ -306,6 +306,7 @@ class Orchestrator:
             model=response.model,
             usage=response.usage,
             estimated_cost_usd=response.estimated_cost_usd,
+            attempts=response.attempts,
             latency_ms=_elapsed_ms(started),
         )
 
