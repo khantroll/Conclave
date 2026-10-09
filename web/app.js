@@ -40,11 +40,12 @@ async function loadProviders() {
   const descriptors = body.descriptors || [];
   $("providers").innerHTML = descriptors.length
     ? descriptors.map(p => `
-        <span class="provider-detail">
+        <span class="provider-detail" data-provider="${escapeHtml(p.name)}">
           <strong>${escapeHtml(p.name)}</strong>
           <small>${escapeHtml(p.model || "model not reported")}</small>
           <small>${escapeHtml((p.capabilities || []).join(", ") || "general")}</small>
           <span class="provider-source">${escapeHtml(p.source || "configured")}</span>
+          <span class="provider-status" data-status-for="${escapeHtml(p.name)}"></span>
           <button class="secondary provider-test" data-name="${escapeHtml(p.name)}">Test</button>
         </span>`).join("")
     : body.providers.map(p => `
@@ -56,6 +57,47 @@ async function loadProviders() {
   document.querySelectorAll(".provider-test").forEach(button => {
     button.addEventListener("click", () => testProvider(button.dataset.name, button));
   });
+}
+
+function renderProviderTestStatus(result) {
+  const target = document.querySelector(`[data-status-for="${CSS.escape(result.name)}"]`);
+  if (!target) return;
+  const attempts = result.attempts > 1 ? ` · ${result.attempts} attempts` : "";
+  const latency = result.latency_ms != null ? ` · ${result.latency_ms} ms` : "";
+  target.textContent = result.status === "succeeded"
+    ? `OK${latency}${attempts}`
+    : `${result.status}${latency}${attempts}`;
+  target.classList.toggle("error", result.status !== "succeeded");
+}
+
+async function testAllProviders() {
+  const button = $("testAllProviders");
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent = "Testing…";
+  $("providerTestDetail").classList.remove("error");
+  $("providerTestDetail").textContent = "Testing configured providers concurrently…";
+
+  try {
+    const results = await (await api("/api/providers/test-all", {method: "POST"})).json();
+    results.forEach(renderProviderTestStatus);
+    const succeeded = results.filter(result => result.status === "succeeded").length;
+    const failed = results.length - succeeded;
+    const failures = results
+      .filter(result => result.status !== "succeeded")
+      .map(result => `${result.name}: ${result.error || result.status}`);
+
+    $("providerTestDetail").textContent = results.length
+      ? `${succeeded}/${results.length} configured providers passed.${failures.length ? " " + failures.join(" | ") : ""}`
+      : "No configured providers to test.";
+    $("providerTestDetail").classList.toggle("error", failed > 0);
+  } catch (error) {
+    $("providerTestDetail").textContent = error.message || "Provider test failed.";
+    $("providerTestDetail").classList.add("error");
+  } finally {
+    button.textContent = original;
+    button.disabled = false;
+  }
 }
 
 async function testProvider(name, button) {
@@ -76,6 +118,7 @@ async function testProvider(name, button) {
       : `${name} connected successfully${attempts}.`;
     $("status").textContent = detail;
     $("providerTestDetail").textContent = detail;
+    renderProviderTestStatus(result);
     $("providerTestDetail").classList.toggle("error", Boolean(result.error));
   } catch (error) {
     button.textContent = "Failed";
@@ -582,6 +625,7 @@ $("workspaceSelect").addEventListener("change", async (event) => {
   await loadHistory();
 });
 $("workspaceForm").addEventListener("submit", saveWorkspace);
+$("testAllProviders").addEventListener("click", testAllProviders);
 $("insertContextTemplate").addEventListener("click", insertContextTemplate);
 $("workspaceCancel").addEventListener("click", resetWorkspaceForm);
 $("editWorkspace").addEventListener("click", beginWorkspaceEdit);
