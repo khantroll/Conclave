@@ -252,7 +252,9 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
             question=request.question,
             delegates=delegates,
             arbiter=workspace.arbiter,
+            arbiter_fallbacks=workspace.arbiter_fallbacks,
             critic=workspace.critic,
+            critic_fallbacks=workspace.critic_fallbacks,
             roles={name: workspace.roles[name] for name in delegates if name in workspace.roles},
             workspace_context=workspace.context,
             minimum_successes=min(workspace.minimum_successes, len(delegates)),
@@ -362,8 +364,18 @@ def _validate_workspace(request: WorkspaceCreate, provider_names: list[str]) -> 
     missing = [name for name in request.delegates if name not in known]
     if request.critic and request.critic not in known:
         missing.append(request.critic)
+    missing.extend(name for name in request.critic_fallbacks if name not in known)
     if request.arbiter not in known:
         missing.append(request.arbiter)
+    missing.extend(name for name in request.arbiter_fallbacks if name not in known)
+    if request.critic and request.critic in request.critic_fallbacks:
+        raise HTTPException(status_code=422, detail="Critic fallback list must not repeat the primary Critic")
+    if request.arbiter in request.arbiter_fallbacks:
+        raise HTTPException(status_code=422, detail="Arbiter fallback list must not repeat the primary Arbiter")
+    if len(set(request.critic_fallbacks)) != len(request.critic_fallbacks):
+        raise HTTPException(status_code=422, detail="Critic fallback providers must be unique")
+    if len(set(request.arbiter_fallbacks)) != len(request.arbiter_fallbacks):
+        raise HTTPException(status_code=422, detail="Arbiter fallback providers must be unique")
     if missing:
         names = ", ".join(sorted(set(missing)))
         raise HTTPException(status_code=422, detail=f"Unknown provider(s): {names}")
