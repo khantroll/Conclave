@@ -42,8 +42,14 @@
           <label>Delegate roles <small>one per line: provider = role/instructions</small>
             <textarea id="workspaceRoles" rows="5" placeholder="openai = Architect\nclaude = Skeptical reviewer\ngemini = Researcher"></textarea>
           </label>
-          <label>Critic<input id="workspaceCritic" placeholder="claude"></label>
-          <label>Arbiter<input id="workspaceArbiter" placeholder="openai" required></label>
+          <label>Critic<input id="workspaceCritic" placeholder="mistral"></label>
+          <label>Critic fallbacks <small>comma-separated; tried in order if the primary Critic fails</small>
+            <input id="workspaceCriticFallbacks" placeholder="openrouter-free, groq">
+          </label>
+          <label>Arbiter<input id="workspaceArbiter" placeholder="gemini" required></label>
+          <label>Arbiter fallbacks <small>comma-separated; tried in order if the primary Arbiter fails</small>
+            <input id="workspaceArbiterFallbacks" placeholder="groq, openrouter-free">
+          </label>
           <label>Minimum successes<input id="workspaceQuorum" type="number" min="1" value="1"></label>
           <label class="checkbox-row"><input id="workspaceAutoSelect" type="checkbox"> Automatically choose a subset of delegates based on the question</label>
           <div class="row">
