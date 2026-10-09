@@ -94,3 +94,16 @@ That question is complex enough to exercise routing, independent perspectives, c
 9. Compare the three untouched Delegate outputs, Critic audit, and Arbiter result.
 10. Export the run JSON and inspect actual model names, latency, usage, failures, and synthesis quality.
 11. Only after this passes, enable automatic Delegate selection and compare one-, two-, and three-Delegate routing.
+
+
+### Current Phase 4 result
+
+The first real-provider test has now completed successfully with a real final synthesis.
+
+- Groq and OpenRouter produced real Delegate responses.
+- Gemini reached its endpoint but returned transient HTTP 503 high-demand errors.
+- Mistral reached its endpoint but returned HTTP 429 rate-limit errors.
+- With working providers reassigned to the downstream roles, OpenRouter completed the Critic stage and Groq completed the Arbiter stage.
+- Conclave produced a final synthesis from real model outputs.
+
+This validates the core real-provider orchestration path. Continue Phase 4 by stabilizing Gemini/Mistral access, testing transient retry/backoff, and comparing synthesis quality across repeated runs.
