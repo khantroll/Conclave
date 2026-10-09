@@ -21,6 +21,8 @@ class ProviderConfig(BaseModel):
     priority: int = 100
     input_cost_per_million: float | None = Field(default=None, ge=0)
     output_cost_per_million: float | None = Field(default=None, ge=0)
+    transient_max_retries: int = Field(default=2, ge=0, le=5)
+    retry_backoff_seconds: float = Field(default=1.0, ge=0, le=30)
 
 
 class ConclaveConfig(BaseModel):
