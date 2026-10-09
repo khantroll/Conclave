@@ -40,7 +40,9 @@ class WorkspaceStore:
                     delegates_json TEXT NOT NULL,
                     roles_json TEXT NOT NULL,
                     critic TEXT,
+                    critic_fallbacks_json TEXT NOT NULL DEFAULT '[]',
                     arbiter TEXT NOT NULL,
+                    arbiter_fallbacks_json TEXT NOT NULL DEFAULT '[]',
                     minimum_successes INTEGER NOT NULL,
                     auto_select_delegates INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
@@ -53,6 +55,18 @@ class WorkspaceStore:
                 table="workspaces",
                 column="auto_select_delegates",
                 definition="INTEGER NOT NULL DEFAULT 0",
+            )
+            self._ensure_column(
+                connection,
+                table="workspaces",
+                column="critic_fallbacks_json",
+                definition="TEXT NOT NULL DEFAULT '[]'",
+            )
+            self._ensure_column(
+                connection,
+                table="workspaces",
+                column="arbiter_fallbacks_json",
+                definition="TEXT NOT NULL DEFAULT '[]'",
             )
             connection.execute(
                 """
@@ -108,9 +122,9 @@ class WorkspaceStore:
                 """
                 INSERT INTO workspaces (
                     id, name, description, context, delegates_json, roles_json,
-                    critic, arbiter, minimum_successes, auto_select_delegates,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    critic, critic_fallbacks_json, arbiter, arbiter_fallbacks_json,
+                    minimum_successes, auto_select_delegates, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workspace.id,
@@ -120,7 +134,9 @@ class WorkspaceStore:
                     json.dumps(workspace.delegates),
                     json.dumps(workspace.roles),
                     workspace.critic,
+                    json.dumps(workspace.critic_fallbacks),
                     workspace.arbiter,
+                    json.dumps(workspace.arbiter_fallbacks),
                     workspace.minimum_successes,
                     1 if workspace.auto_select_delegates else 0,
                     workspace.created_at,
@@ -145,7 +161,8 @@ class WorkspaceStore:
                 """
                 UPDATE workspaces
                 SET name = ?, description = ?, context = ?, delegates_json = ?,
-                    roles_json = ?, critic = ?, arbiter = ?, minimum_successes = ?,
+                    roles_json = ?, critic = ?, critic_fallbacks_json = ?,
+                    arbiter = ?, arbiter_fallbacks_json = ?, minimum_successes = ?,
                     auto_select_delegates = ?, updated_at = ?
                 WHERE id = ?
                 """,
@@ -156,7 +173,9 @@ class WorkspaceStore:
                     json.dumps(updated.delegates),
                     json.dumps(updated.roles),
                     updated.critic,
+                    json.dumps(updated.critic_fallbacks),
                     updated.arbiter,
+                    json.dumps(updated.arbiter_fallbacks),
                     updated.minimum_successes,
                     1 if updated.auto_select_delegates else 0,
                     updated.updated_at,
@@ -257,7 +276,9 @@ class WorkspaceStore:
             delegates=json.loads(row["delegates_json"]),
             roles=json.loads(row["roles_json"]),
             critic=row["critic"],
+            critic_fallbacks=json.loads(row["critic_fallbacks_json"] or "[]"),
             arbiter=row["arbiter"],
+            arbiter_fallbacks=json.loads(row["arbiter_fallbacks_json"] or "[]"),
             minimum_successes=row["minimum_successes"],
             auto_select_delegates=bool(row["auto_select_delegates"]),
             created_at=row["created_at"],
