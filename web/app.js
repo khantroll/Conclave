@@ -70,9 +70,10 @@ async function testProvider(name, button) {
     button.textContent = result.status === "succeeded"
       ? `OK ${result.latency_ms ?? ""}ms`
       : result.status;
+    const attempts = result.attempts > 1 ? ` after ${result.attempts} attempts` : "";
     const detail = result.error
       ? `${name}: ${result.error}`
-      : `${name} connected successfully.`;
+      : `${name} connected successfully${attempts}.`;
     $("status").textContent = detail;
     $("providerTestDetail").textContent = detail;
     $("providerTestDetail").classList.toggle("error", Boolean(result.error));
@@ -536,6 +537,7 @@ function formatStageMeta(stage) {
   const parts = [stage.status];
   if (stage.model) parts.push(stage.model);
   if (stage.latency_ms != null) parts.push(`${stage.latency_ms} ms`);
+  if (stage.attempts > 1) parts.push(`${stage.attempts} attempts`);
   const promptTokens = stage.usage?.prompt_tokens;
   const completionTokens = stage.usage?.completion_tokens;
   const totalTokens = stage.usage?.total_tokens;
