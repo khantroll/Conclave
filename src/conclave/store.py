@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -254,20 +255,26 @@ class WorkspaceStore:
         if self.run_log_dir is None:
             return
 
-        self.run_log_dir.mkdir(parents=True, exist_ok=True)
-        created = datetime.fromisoformat(run.created_at)
-        stamp = created.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        target = self.run_log_dir / f"{stamp}_{run.id}.json"
-        temp = target.with_suffix(".json.tmp")
-        payload = {
-            "schema_version": 1,
-            "run": run.model_dump(mode="json"),
-        }
-        temp.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        temp.replace(target)
+        try:
+            self.run_log_dir.mkdir(parents=True, exist_ok=True)
+            created = datetime.fromisoformat(run.created_at)
+            stamp = created.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            target = self.run_log_dir / f"{stamp}_{run.id}.json"
+            temp = target.with_suffix(".json.tmp")
+            workspace = self.get(run.workspace_id) if run.workspace_id else None
+            payload = {
+                "schema_version": 1,
+                "exported_at": _now(),
+                "workspace": workspace.model_dump(mode="json") if workspace else None,
+                "run": run.model_dump(mode="json"),
+            }
+            temp.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            temp.replace(target)
+        except OSError:
+            logging.exception("Could not write automatic run log for %s", run.id)
 
     def list_runs(self, workspace_id: str | None = None) -> list[DeliberationRun]:
         with self._connect() as connection:
