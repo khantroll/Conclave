@@ -94,6 +94,7 @@ class OpenAICompatibleProvider(Provider):
             model=data.get("model") or self.model,
             usage=normalized_usage,
             estimated_cost_usd=self._estimate_cost(normalized_usage),
+            attempts=attempt,
         )
 
     async def _post(
