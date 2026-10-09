@@ -174,9 +174,19 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
         return await orchestrator.run_panel(request)
 
     @app.post("/api/deliberate", response_model=DeliberationResult)
-    async def deliberate(request: DeliberationRequest) -> DeliberationResult:
+    async def deliberate(
+        request: DeliberationRequest,
+        response: Response,
+    ) -> DeliberationResult:
         _validate_quorum(request.minimum_successes, len(request.delegates))
-        return await orchestrator.deliberate(request)
+        result = await orchestrator.deliberate(request)
+        run = store.save_run(
+            question=request.question,
+            request=request,
+            result=result,
+        )
+        response.headers["X-Conclave-Run-ID"] = run.id
+        return result
 
     @app.post("/api/workspaces", response_model=Workspace, status_code=201)
     async def create_workspace(request: WorkspaceCreate) -> Workspace:
