@@ -134,7 +134,9 @@ function renderWorkspaceSummary() {
     <dl>
       <dt>Delegates</dt><dd>${delegates || "None"}</dd>
       <dt>Critic</dt><dd>${escapeHtml(workspace.critic || "None")}</dd>
+      <dt>Critic fallback</dt><dd>${escapeHtml((workspace.critic_fallbacks || []).join(" → ") || "None")}</dd>
       <dt>Arbiter</dt><dd>${escapeHtml(workspace.arbiter)}</dd>
+      <dt>Arbiter fallback</dt><dd>${escapeHtml((workspace.arbiter_fallbacks || []).join(" → ") || "None")}</dd>
       <dt>Routing</dt><dd>${workspace.auto_select_delegates ? "Automatic subset" : "Fixed panel"}</dd>
       <dt>Quorum</dt><dd>${workspace.minimum_successes}</dd>
       <dt>Context</dt><dd>${workspace.context ? "Configured" : "None"}</dd>
@@ -200,7 +202,11 @@ function workspaceFormBody() {
       .filter(Boolean),
     roles: parseRoles($("workspaceRoles").value),
     critic: $("workspaceCritic").value.trim() || null,
+    critic_fallbacks: $("workspaceCriticFallbacks").value
+      .split(",").map(s => s.trim()).filter(Boolean),
     arbiter: $("workspaceArbiter").value.trim(),
+    arbiter_fallbacks: $("workspaceArbiterFallbacks").value
+      .split(",").map(s => s.trim()).filter(Boolean),
     minimum_successes: Number($("workspaceQuorum").value || 1),
     auto_select_delegates: $("workspaceAutoSelect").checked,
   };
@@ -261,7 +267,9 @@ function beginWorkspaceEdit() {
   $("workspaceDelegates").value = workspace.delegates.join(", ");
   $("workspaceRoles").value = serializeRoles(workspace.roles);
   $("workspaceCritic").value = workspace.critic || "";
+  $("workspaceCriticFallbacks").value = (workspace.critic_fallbacks || []).join(", ");
   $("workspaceArbiter").value = workspace.arbiter;
+  $("workspaceArbiterFallbacks").value = (workspace.arbiter_fallbacks || []).join(", ");
   $("workspaceQuorum").value = String(workspace.minimum_successes);
   $("workspaceAutoSelect").checked = Boolean(workspace.auto_select_delegates);
   $("workspaceFormSummary").textContent = "Edit workspace";
