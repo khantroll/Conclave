@@ -96,6 +96,7 @@ def test_demo_deliberation_runs_panel_critic_and_arbiter():
     assert body["critic"]["raw_response"] == "Critic demo response"
     assert body["arbiter"]["status"] == "succeeded"
     assert body["arbiter"]["raw_response"] == "Synthesized demo response"
+    assert response.headers["X-Conclave-Run-ID"]
 
 
 def test_deliberation_skips_critic_and_arbiter_without_quorum():
