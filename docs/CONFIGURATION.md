@@ -102,3 +102,26 @@ groq = Independent fast generalist. Solve the problem independently and challeng
 Once that fixed three-model path is proven, enable automatic delegate selection and let simpler questions use fewer models.
 
 Model availability can change. If a provider Test button reports a model-not-found error, update only that provider's `model` value in `conclave.json`, restart Conclave, and test again.
+
+
+## Transient retry policy
+
+OpenAI-compatible providers now retry a small set of transient HTTP failures automatically:
+
+- 429 Too Many Requests
+- 502 Bad Gateway
+- 503 Service Unavailable
+- 504 Gateway Timeout
+
+The defaults are two retries with exponential backoff starting at one second. If the provider sends a numeric `Retry-After` header, Conclave respects it up to a ten-second cap. Authentication, authorization, model-not-found, and other non-transient errors are not retried.
+
+Per-provider settings may override the defaults:
+
+```json
+{
+  "transient_max_retries": 2,
+  "retry_backoff_seconds": 1.0
+}
+```
+
+The orchestrator's existing per-stage timeout remains the outer limit, so retry/backoff cannot extend a Delegate/Critic/Arbiter call indefinitely.
