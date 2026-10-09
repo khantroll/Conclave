@@ -137,6 +137,7 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
             model=result.model,
             latency_ms=result.latency_ms,
             error=result.error,
+            attempts=result.attempts,
         )
 
     @app.post("/api/analyze", response_model=RequestAnalysis)
