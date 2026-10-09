@@ -354,3 +354,34 @@ def test_workspace_validation_rejects_duplicate_delegates_and_unknown_roles(tmp_
     )
     assert bad_role.status_code == 422
     assert "non-delegate" in bad_role.json()["detail"]
+
+
+def test_workspace_rejects_invalid_stage_fallbacks(tmp_path):
+    store = WorkspaceStore(tmp_path / "fallback-validation.db")
+    workspace_app = create_app(workspace_store=store)
+    workspace_client = TestClient(workspace_app)
+
+    duplicate_primary = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Bad fallback",
+            "delegates": ["demo-a"],
+            "critic": "demo-critic",
+            "critic_fallbacks": ["demo-critic"],
+            "arbiter": "demo-arbiter",
+        },
+    )
+    assert duplicate_primary.status_code == 422
+    assert "must not repeat" in duplicate_primary.json()["detail"]
+
+    unknown = workspace_client.post(
+        "/api/workspaces",
+        json={
+            "name": "Unknown fallback",
+            "delegates": ["demo-a"],
+            "arbiter": "demo-arbiter",
+            "arbiter_fallbacks": ["not-real"],
+        },
+    )
+    assert unknown.status_code == 422
+    assert "not-real" in unknown.json()["detail"]
