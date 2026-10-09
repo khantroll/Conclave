@@ -125,3 +125,22 @@ Per-provider settings may override the defaults:
 ```
 
 The orchestrator's existing per-stage timeout remains the outer limit, so retry/backoff cannot extend a Delegate/Critic/Arbiter call indefinitely.
+
+
+## Critic and Arbiter fallbacks
+
+Workspaces may define ordered fallback providers for the downstream stages.
+
+Example:
+
+```text
+Critic: mistral
+Critic fallbacks: openrouter-free, groq
+
+Arbiter: gemini
+Arbiter fallbacks: groq, openrouter-free
+```
+
+Conclave always tries the primary provider first. A fallback is tried only if the preceding provider fails or times out. The first successful result becomes the Critic or Arbiter result and retains the actual provider name that produced it.
+
+This is intended for provider resilience, not silent majority voting. The fallback order is explicit and deterministic.
