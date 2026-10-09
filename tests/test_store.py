@@ -127,3 +127,24 @@ def test_workspace_replace_and_delete_preserve_run_history(tmp_path):
     preserved = store.get_run(run.id)
     assert preserved is not None
     assert preserved.workspace_id is None
+
+
+def test_workspace_persists_stage_fallbacks(tmp_path):
+    from conclave.models import WorkspaceCreate
+
+    store = WorkspaceStore(tmp_path / "fallbacks.db")
+    workspace = store.create(
+        WorkspaceCreate(
+            name="Fallbacks",
+            delegates=["demo-a"],
+            critic="demo-critic",
+            critic_fallbacks=["demo-b"],
+            arbiter="demo-arbiter",
+            arbiter_fallbacks=["demo-a"],
+        )
+    )
+
+    loaded = store.get(workspace.id)
+    assert loaded is not None
+    assert loaded.critic_fallbacks == ["demo-b"]
+    assert loaded.arbiter_fallbacks == ["demo-a"]
