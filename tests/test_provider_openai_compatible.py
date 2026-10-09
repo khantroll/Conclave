@@ -35,6 +35,7 @@ async def test_openai_compatible_provider_returns_text_and_usage():
     assert response.model == "test-model-2026"
     assert response.usage["total_tokens"] == 5
     assert response.estimated_cost_usd == pytest.approx(0.000022)
+    assert response.attempts == 1
 
 
 async def test_openai_compatible_provider_surfaces_http_error():
@@ -146,6 +147,7 @@ async def test_transient_http_errors_are_retried(monkeypatch):
         response = await provider.ask("hi")
 
     assert response.text == "recovered"
+    assert response.attempts == 3
     assert attempts == 3
     assert sleeps == [0.5, 1.0]
 
@@ -217,5 +219,6 @@ async def test_retry_after_header_is_respected_and_capped(monkeypatch):
         response = await provider.ask("hi")
 
     assert response.text == "ok"
+    assert response.attempts == 2
     assert attempts == 2
     assert sleeps == [10.0]
