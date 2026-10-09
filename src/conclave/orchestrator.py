@@ -81,16 +81,15 @@ class Orchestrator:
 
         critic: DelegateResult | None = None
         if request.critic:
-            critic = await self._run_delegate(
-                DelegateRequest(
-                    name=request.critic,
-                    prompt=build_critic_prompt(
-                        question=request.question,
-                        delegate_results=panel.delegates,
-                        workspace_context=request.workspace_context,
-                    ),
-                    timeout_seconds=request.critic_timeout_seconds,
-                )
+            critic = await self._run_with_fallback(
+                primary=request.critic,
+                fallbacks=request.critic_fallbacks,
+                prompt=build_critic_prompt(
+                    question=request.question,
+                    delegate_results=panel.delegates,
+                    workspace_context=request.workspace_context,
+                ),
+                timeout_seconds=request.critic_timeout_seconds,
             )
 
         arbiter_prompt = build_arbiter_prompt(
@@ -99,12 +98,11 @@ class Orchestrator:
             workspace_context=request.workspace_context,
             critic_result=critic,
         )
-        arbiter = await self._run_delegate(
-            DelegateRequest(
-                name=request.arbiter,
-                prompt=arbiter_prompt,
-                timeout_seconds=request.arbiter_timeout_seconds,
-            )
+        arbiter = await self._run_with_fallback(
+            primary=request.arbiter,
+            fallbacks=request.arbiter_fallbacks,
+            prompt=arbiter_prompt,
+            timeout_seconds=request.arbiter_timeout_seconds,
         )
         return DeliberationResult(
             panel=panel,
@@ -158,29 +156,27 @@ class Orchestrator:
 
         critic: DelegateResult | None = None
         if request.critic:
-            critic = await self._run_delegate(
-                DelegateRequest(
-                    name=request.critic,
-                    prompt=build_critic_prompt(
-                        question=request.question,
-                        delegate_results=panel.delegates,
-                        workspace_context=request.workspace_context,
-                    ),
-                    timeout_seconds=request.critic_timeout_seconds,
-                )
-            )
-
-        arbiter = await self._run_delegate(
-            DelegateRequest(
-                name=request.arbiter,
-                prompt=build_arbiter_prompt(
+            critic = await self._run_with_fallback(
+                primary=request.critic,
+                fallbacks=request.critic_fallbacks,
+                prompt=build_critic_prompt(
                     question=request.question,
                     delegate_results=panel.delegates,
                     workspace_context=request.workspace_context,
-                    critic_result=critic,
                 ),
-                timeout_seconds=request.arbiter_timeout_seconds,
+                timeout_seconds=request.critic_timeout_seconds,
             )
+
+        arbiter = await self._run_with_fallback(
+            primary=request.arbiter,
+            fallbacks=request.arbiter_fallbacks,
+            prompt=build_arbiter_prompt(
+                question=request.question,
+                delegate_results=panel.delegates,
+                workspace_context=request.workspace_context,
+                critic_result=critic,
+            ),
+            timeout_seconds=request.arbiter_timeout_seconds,
         )
         return DeliberationResult(
             panel=panel,
@@ -200,28 +196,26 @@ class Orchestrator:
         if not prior_result.panel.synthesizeable:
             raise ValueError("The Delegate panel does not satisfy quorum")
 
-        critic = await self._run_delegate(
-            DelegateRequest(
-                name=request.critic,
-                prompt=build_critic_prompt(
-                    question=request.question,
-                    delegate_results=prior_result.panel.delegates,
-                    workspace_context=request.workspace_context,
-                ),
-                timeout_seconds=request.critic_timeout_seconds,
-            )
+        critic = await self._run_with_fallback(
+            primary=request.critic,
+            fallbacks=request.critic_fallbacks,
+            prompt=build_critic_prompt(
+                question=request.question,
+                delegate_results=prior_result.panel.delegates,
+                workspace_context=request.workspace_context,
+            ),
+            timeout_seconds=request.critic_timeout_seconds,
         )
-        arbiter = await self._run_delegate(
-            DelegateRequest(
-                name=request.arbiter,
-                prompt=build_arbiter_prompt(
-                    question=request.question,
-                    delegate_results=prior_result.panel.delegates,
-                    workspace_context=request.workspace_context,
-                    critic_result=critic,
-                ),
-                timeout_seconds=request.arbiter_timeout_seconds,
-            )
+        arbiter = await self._run_with_fallback(
+            primary=request.arbiter,
+            fallbacks=request.arbiter_fallbacks,
+            prompt=build_arbiter_prompt(
+                question=request.question,
+                delegate_results=prior_result.panel.delegates,
+                workspace_context=request.workspace_context,
+                critic_result=critic,
+            ),
+            timeout_seconds=request.arbiter_timeout_seconds,
         )
         return DeliberationResult(
             panel=prior_result.panel,
@@ -241,17 +235,16 @@ class Orchestrator:
         if not prior_result.panel.synthesizeable:
             raise ValueError("The Delegate panel does not satisfy quorum")
 
-        arbiter = await self._run_delegate(
-            DelegateRequest(
-                name=request.arbiter,
-                prompt=build_arbiter_prompt(
-                    question=request.question,
-                    delegate_results=prior_result.panel.delegates,
-                    workspace_context=request.workspace_context,
-                    critic_result=prior_result.critic,
-                ),
-                timeout_seconds=request.arbiter_timeout_seconds,
-            )
+        arbiter = await self._run_with_fallback(
+            primary=request.arbiter,
+            fallbacks=request.arbiter_fallbacks,
+            prompt=build_arbiter_prompt(
+                question=request.question,
+                delegate_results=prior_result.panel.delegates,
+                workspace_context=request.workspace_context,
+                critic_result=prior_result.critic,
+            ),
+            timeout_seconds=request.arbiter_timeout_seconds,
         )
         return DeliberationResult(
             panel=prior_result.panel,
@@ -261,6 +254,30 @@ class Orchestrator:
                 [*prior_result.panel.delegates, prior_result.critic, arbiter]
             ),
         )
+
+    async def _run_with_fallback(
+        self,
+        *,
+        primary: str,
+        fallbacks: list[str],
+        prompt: str,
+        timeout_seconds: float,
+    ) -> DelegateResult:
+        providers = [primary, *fallbacks]
+        last_result: DelegateResult | None = None
+        for name in providers:
+            result = await self._run_delegate(
+                DelegateRequest(
+                    name=name,
+                    prompt=prompt,
+                    timeout_seconds=timeout_seconds,
+                )
+            )
+            if result.status == DelegateStatus.SUCCEEDED:
+                return result
+            last_result = result
+        assert last_result is not None
+        return last_result
 
     async def _run_delegate(self, delegate: DelegateRequest) -> DelegateResult:
         provider = self._providers.get(delegate.name)
