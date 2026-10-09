@@ -106,3 +106,116 @@ def test_default_client_disables_internal_httpx_timeout(monkeypatch):
     result = asyncio.run(provider.ask("hello"))
     assert result.text == "ok"
     assert captured["timeout"] is None
+
+
+async def test_transient_http_errors_are_retried(monkeypatch):
+    attempts = 0
+    sleeps = []
+
+    async def fake_sleep(delay):
+        sleeps.append(delay)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            return httpx.Response(503, text="high demand")
+        return httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "choices": [{"message": {"content": "recovered"}}],
+                "usage": {},
+            },
+        )
+
+    monkeypatch.setattr(
+        "conclave.providers.openai_compatible.asyncio.sleep",
+        fake_sleep,
+    )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1",
+            model="test-model",
+            transient_max_retries=2,
+            retry_backoff_seconds=0.5,
+            client=client,
+        )
+        response = await provider.ask("hi")
+
+    assert response.text == "recovered"
+    assert attempts == 3
+    assert sleeps == [0.5, 1.0]
+
+
+async def test_non_transient_http_error_is_not_retried(monkeypatch):
+    attempts = 0
+
+    async def fake_sleep(delay):
+        raise AssertionError("sleep should not be called")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(401, text="bad key")
+
+    monkeypatch.setattr(
+        "conclave.providers.openai_compatible.asyncio.sleep",
+        fake_sleep,
+    )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1",
+            model="test-model",
+            transient_max_retries=2,
+            client=client,
+        )
+        with pytest.raises(RuntimeError, match="HTTP 401"):
+            await provider.ask("hi")
+
+    assert attempts == 1
+
+
+async def test_retry_after_header_is_respected_and_capped(monkeypatch):
+    attempts = 0
+    sleeps = []
+
+    async def fake_sleep(delay):
+        sleeps.append(delay)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, text="rate limited", headers={"Retry-After": "30"})
+        return httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {},
+            },
+        )
+
+    monkeypatch.setattr(
+        "conclave.providers.openai_compatible.asyncio.sleep",
+        fake_sleep,
+    )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1",
+            model="test-model",
+            transient_max_retries=1,
+            client=client,
+        )
+        response = await provider.ask("hi")
+
+    assert response.text == "ok"
+    assert attempts == 2
+    assert sleeps == [10.0]
