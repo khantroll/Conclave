@@ -58,7 +58,10 @@ class OpenAICompatibleProvider(Provider):
                 json=payload,
             )
         else:
-            async with httpx.AsyncClient() as client:
+            # The orchestrator owns the overall delegate timeout. Disable httpx's
+            # much shorter default read timeout here so slower model responses
+            # are not aborted after only a few seconds.
+            async with httpx.AsyncClient(timeout=None) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers=headers,
