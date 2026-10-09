@@ -31,6 +31,7 @@ class DelegateResult(BaseModel):
     latency_ms: int | None = None
     usage: dict[str, Any] = Field(default_factory=dict)
     estimated_cost_usd: float | None = None
+    attempts: int = Field(default=1, ge=1)
 
 
 class PanelRequest(BaseModel):
@@ -140,6 +141,7 @@ class ProviderTestResult(BaseModel):
     model: str | None = None
     latency_ms: int | None = None
     error: str | None = None
+    attempts: int = Field(default=1, ge=1)
 
 
 class DelegateSelection(BaseModel):
