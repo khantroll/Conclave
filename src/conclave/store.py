@@ -19,8 +19,14 @@ from .models import (
 class WorkspaceStore:
     """SQLite persistence for workspaces and deliberation history."""
 
-    def __init__(self, path: str | Path = "conclave.db") -> None:
+    def __init__(
+        self,
+        path: str | Path = "conclave.db",
+        *,
+        run_log_dir: str | Path | None = None,
+    ) -> None:
         self.path = str(path)
+        self.run_log_dir = Path(run_log_dir) if run_log_dir else None
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -241,7 +247,27 @@ class WorkspaceStore:
                     run.created_at,
                 ),
             )
+        self._write_run_log(run)
         return run
+
+    def _write_run_log(self, run: DeliberationRun) -> None:
+        if self.run_log_dir is None:
+            return
+
+        self.run_log_dir.mkdir(parents=True, exist_ok=True)
+        created = datetime.fromisoformat(run.created_at)
+        stamp = created.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        target = self.run_log_dir / f"{stamp}_{run.id}.json"
+        temp = target.with_suffix(".json.tmp")
+        payload = {
+            "schema_version": 1,
+            "run": run.model_dump(mode="json"),
+        }
+        temp.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        temp.replace(target)
 
     def list_runs(self, workspace_id: str | None = None) -> list[DeliberationRun]:
         with self._connect() as connection:
