@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -25,6 +26,8 @@ class OpenAICompatibleProvider(Provider):
         extra_headers: dict[str, str] | None = None,
         input_cost_per_million: float | None = None,
         output_cost_per_million: float | None = None,
+        transient_max_retries: int = 2,
+        retry_backoff_seconds: float = 1.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -34,6 +37,8 @@ class OpenAICompatibleProvider(Provider):
         self.extra_headers = dict(extra_headers or {})
         self.input_cost_per_million = input_cost_per_million
         self.output_cost_per_million = output_cost_per_million
+        self.transient_max_retries = transient_max_retries
+        self.retry_backoff_seconds = retry_backoff_seconds
         self._client = client
 
     async def ask(self, prompt: str) -> ProviderResponse:
@@ -51,31 +56,28 @@ class OpenAICompatibleProvider(Provider):
             "messages": messages,
         }
 
-        if self._client is not None:
-            response = await self._client.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-        else:
-            # The orchestrator owns the overall delegate timeout. Disable httpx's
-            # much shorter default read timeout here so slower model responses
-            # are not aborted after only a few seconds.
-            async with httpx.AsyncClient(timeout=None) as client:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=headers,
-                    json=payload,
+        max_attempts = self.transient_max_retries + 1
+        response: httpx.Response | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            response = await self._post(headers=headers, payload=payload)
+
+            if not response.is_error:
+                break
+
+            if response.status_code not in {429, 502, 503, 504} or attempt >= max_attempts:
+                body = response.text.strip().replace("\n", " ")
+                if len(body) > 500:
+                    body = f"{body[:500]}..."
+                suffix = f" after {attempt} attempt(s)" if attempt > 1 else ""
+                raise RuntimeError(
+                    f"HTTP {response.status_code} from {self.base_url}{suffix}: "
+                    f"{body or response.reason_phrase}"
                 )
 
-        if response.is_error:
-            body = response.text.strip().replace("\n", " ")
-            if len(body) > 500:
-                body = f"{body[:500]}..."
-            raise RuntimeError(
-                f"HTTP {response.status_code} from {self.base_url}: {body or response.reason_phrase}"
-            )
+            await asyncio.sleep(self._retry_delay(response, attempt))
 
+        assert response is not None
         data: dict[str, Any] = response.json()
         try:
             text = data["choices"][0]["message"]["content"]
@@ -93,6 +95,38 @@ class OpenAICompatibleProvider(Provider):
             usage=normalized_usage,
             estimated_cost_usd=self._estimate_cost(normalized_usage),
         )
+
+    async def _post(
+        self,
+        *,
+        headers: dict[str, str],
+        payload: dict[str, object],
+    ) -> httpx.Response:
+        if self._client is not None:
+            return await self._client.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+
+        # The orchestrator owns the overall delegate timeout. Disable httpx's
+        # shorter default read timeout so retries and slower model responses
+        # remain bounded by the orchestrator's per-stage timeout.
+        async with httpx.AsyncClient(timeout=None) as client:
+            return await client.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+
+    def _retry_delay(self, response: httpx.Response, attempt: int) -> float:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return min(max(float(retry_after), 0.0), 10.0)
+            except ValueError:
+                pass
+        return min(self.retry_backoff_seconds * (2 ** (attempt - 1)), 10.0)
 
     def _estimate_cost(self, usage: dict[str, Any]) -> float | None:
         if self.input_cost_per_million is None and self.output_cost_per_million is None:
