@@ -30,6 +30,8 @@ def build_providers(configs: Iterable[ProviderConfig]) -> dict[str, Provider]:
                 extra_headers=config.extra_headers,
                 input_cost_per_million=config.input_cost_per_million,
                 output_cost_per_million=config.output_cost_per_million,
+                transient_max_retries=config.transient_max_retries,
+                retry_backoff_seconds=config.retry_backoff_seconds,
             )
             continue
 
