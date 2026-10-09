@@ -144,3 +144,39 @@ Arbiter fallbacks: groq, openrouter-free
 Conclave always tries the primary provider first. A fallback is tried only if the preceding provider fails or times out. The first successful result becomes the Critic or Arbiter result and retains the actual provider name that produced it.
 
 This is intended for provider resilience, not silent majority voting. The fallback order is explicit and deterministic.
+
+
+## Automatic run audit logs
+
+Every workspace deliberation and every saved retry now writes a pretty-printed JSON audit file in addition to the SQLite history.
+
+By default the files are written to:
+
+```text
+run_logs/
+```
+
+Set a different directory with:
+
+```text
+CONCLAVE_RUN_LOG_DIR=run_logs
+```
+
+Each filename contains the UTC run timestamp and run UUID. The JSON envelope includes:
+
+- a schema version;
+- export timestamp;
+- a snapshot of the workspace as it existed for that saved run;
+- the complete saved run;
+- the original question and request snapshot;
+- selected Delegates and role instructions;
+- workspace context;
+- exact Delegate, Critic, and Arbiter prompts;
+- untouched model responses;
+- actual provider/model names;
+- stage status, latency, token usage, cost estimates, and retry-attempt telemetry;
+- Critic and Arbiter results, including whichever fallback provider actually succeeded.
+
+The directory is ignored by Git because these logs can contain private workspace context, prompts, model responses, or other sensitive material. Treat them with the same care as the SQLite database.
+
+The browser's existing **Download run JSON** control remains available for manual export; the automatic audit log means a human-testing run does not depend on remembering to click it.
