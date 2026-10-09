@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -125,6 +126,28 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
                 if name in descriptors
             ],
         }
+
+    @app.post("/api/providers/test-all", response_model=list[ProviderTestResult])
+    async def test_all_configured_providers() -> list[ProviderTestResult]:
+        names = [
+            name
+            for name in orchestrator.provider_names
+            if descriptors.get(name) and descriptors[name].source == "configured"
+        ]
+        results = await asyncio.gather(
+            *(orchestrator.test_provider(name) for name in names)
+        )
+        return [
+            ProviderTestResult(
+                name=result.name,
+                status=result.status,
+                model=result.model,
+                latency_ms=result.latency_ms,
+                error=result.error,
+                attempts=result.attempts,
+            )
+            for result in results
+        ]
 
     @app.post("/api/providers/{provider_name}/test", response_model=ProviderTestResult)
     async def test_provider(provider_name: str) -> ProviderTestResult:
