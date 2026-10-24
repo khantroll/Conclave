@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import math
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
 
-from .base import Provider, ProviderResponse
+from .base import Provider, ProviderError, ProviderResponse
 
 
 class OpenAICompatibleProvider(Provider):
@@ -60,7 +63,15 @@ class OpenAICompatibleProvider(Provider):
         response: httpx.Response | None = None
 
         for attempt in range(1, max_attempts + 1):
-            response = await self._post(headers=headers, payload=payload)
+            try:
+                response = await self._post(headers=headers, payload=payload)
+            except httpx.RequestError as exc:
+                # A transport failure may occur after a request was accepted.
+                # Preserve attempts without automatically replaying that request.
+                raise ProviderError(
+                    str(exc).strip() or f"{type(exc).__name__}: provider request failed",
+                    attempts=attempt,
+                ) from exc
 
             if not response.is_error:
                 break
@@ -70,22 +81,30 @@ class OpenAICompatibleProvider(Provider):
                 if len(body) > 500:
                     body = f"{body[:500]}..."
                 suffix = f" after {attempt} attempt(s)" if attempt > 1 else ""
-                raise RuntimeError(
+                raise ProviderError(
                     f"HTTP {response.status_code} from {self.base_url}{suffix}: "
-                    f"{body or response.reason_phrase}"
+                    f"{body or response.reason_phrase}",
+                    attempts=attempt,
                 )
 
             await asyncio.sleep(self._retry_delay(response, attempt))
 
         assert response is not None
-        data: dict[str, Any] = response.json()
+        try:
+            data: dict[str, Any] = response.json()
+        except ValueError as exc:
+            raise ProviderError("Provider returned invalid JSON", attempts=attempt) from exc
         try:
             text = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError("Provider returned no chat-completion content") from exc
+            raise ProviderError(
+                "Provider returned no chat-completion content", attempts=attempt
+            ) from exc
 
         if not isinstance(text, str):
-            raise RuntimeError("Provider returned non-text chat-completion content")
+            raise ProviderError(
+                "Provider returned non-text chat-completion content", attempts=attempt
+            )
 
         usage = data.get("usage")
         normalized_usage = usage if isinstance(usage, dict) else {}
@@ -124,9 +143,17 @@ class OpenAICompatibleProvider(Provider):
         retry_after = response.headers.get("Retry-After")
         if retry_after:
             try:
-                return min(max(float(retry_after), 0.0), 10.0)
+                delay = float(retry_after)
             except ValueError:
-                pass
+                try:
+                    retry_at = parsedate_to_datetime(retry_after)
+                    if retry_at.tzinfo is None:
+                        retry_at = retry_at.replace(tzinfo=timezone.utc)
+                    delay = (retry_at - datetime.now(timezone.utc)).total_seconds()
+                except (ValueError, TypeError, OverflowError):
+                    delay = math.nan
+            if math.isfinite(delay):
+                return min(max(delay, 0.0), 10.0)
         return min(self.retry_backoff_seconds * (2 ** (attempt - 1)), 10.0)
 
     def _estimate_cost(self, usage: dict[str, Any]) -> float | None:
@@ -146,3 +173,4 @@ class OpenAICompatibleProvider(Provider):
         if isinstance(completion_tokens, (int, float)) and self.output_cost_per_million is not None:
             cost += (float(completion_tokens) / 1_000_000) * self.output_cost_per_million
         return round(cost, 8)
+

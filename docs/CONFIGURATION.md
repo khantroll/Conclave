@@ -113,7 +113,9 @@ OpenAI-compatible providers now retry a small set of transient HTTP failures aut
 - 503 Service Unavailable
 - 504 Gateway Timeout
 
-The defaults are two retries with exponential backoff starting at one second. If the provider sends a numeric `Retry-After` header, Conclave respects it up to a ten-second cap. Authentication, authorization, model-not-found, and other non-transient errors are not retried.
+The defaults are two retries with exponential backoff starting at one second. Numeric and HTTP-date `Retry-After` values are supported with a ten-second cap; past dates become zero delay, and invalid or non-finite values use exponential backoff. The cap can cause a retry earlier than a provider's requested wait, so long rate limits can still exhaust retries. Authentication, authorization, model-not-found, and other non-transient errors are not retried.
+
+Completed failures retain the number of HTTP attempts in saved results and provider connectivity tests, including transport or malformed-response failures after a transient retry. Transport failures are not automatically replayed because the provider may already have accepted the request. Timeout results still use the existing default attempt count; they do not report an exact count of interrupted HTTP attempts.
 
 Per-provider settings may override the defaults:
 
@@ -124,7 +126,7 @@ Per-provider settings may override the defaults:
 }
 ```
 
-The orchestrator's existing per-stage timeout remains the outer limit, so retry/backoff cannot extend a Delegate/Critic/Arbiter call indefinitely.
+The orchestrator's timeout bounds each provider invocation, including its retries and backoff. Each configured Critic/Arbiter fallback receives its own timeout; a stage with multiple fallbacks can therefore take longer than one timeout interval.
 
 
 ## Critic and Arbiter fallbacks
@@ -180,3 +182,4 @@ Each filename contains the UTC run timestamp and run UUID. The JSON envelope inc
 The directory is ignored by Git because these logs can contain private workspace context, prompts, model responses, or other sensitive material. Treat them with the same care as the SQLite database.
 
 The browser's existing **Download run JSON** control remains available for manual export; the automatic audit log means a human-testing run does not depend on remembering to click it.
+

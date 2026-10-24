@@ -25,3 +25,12 @@ class Provider(ABC):
     @abstractmethod
     async def ask(self, prompt: str) -> ProviderResponse:
         raise NotImplementedError
+
+
+class ProviderError(RuntimeError):
+    """A failed provider call with request-local attempt telemetry."""
+
+    def __init__(self, message: str, *, attempts: int = 1) -> None:
+        super().__init__(message)
+        self.attempts = attempts
+

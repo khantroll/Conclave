@@ -14,7 +14,7 @@ from .models import (
     PanelResult,
 )
 from .prompts import build_arbiter_prompt, build_critic_prompt, build_delegate_prompt
-from .providers.base import Provider
+from .providers.base import Provider, ProviderError
 
 
 class Orchestrator:
@@ -312,6 +312,7 @@ class Orchestrator:
                 status=DelegateStatus.FAILED,
                 prompt=delegate.prompt,
                 error=message,
+                attempts=exc.attempts if isinstance(exc, ProviderError) else 1,
                 latency_ms=_elapsed_ms(started),
             )
 
@@ -341,3 +342,4 @@ def _total_cost(results: list[DelegateResult | None]) -> float | None:
 
 def _elapsed_ms(started: float) -> int:
     return round((perf_counter() - started) * 1000)
+
