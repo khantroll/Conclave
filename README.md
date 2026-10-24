@@ -156,6 +156,10 @@ Conclave should not turn a single provider failure into a failed session.
 
 The repository has been initialized to capture the product idea before implementation begins. The next step is to define a tightly bounded MVP and decide how much provider plumbing should be delegated to LiteLLM versus implemented directly.
 
+## Research notes and roadmap
+
+- [October 23, 2026 research roadmap](docs/RESEARCH_ROADMAP_2026-10-23.md): proposed experiments for runtime-enforced delegate scope, evidence-backed Critic verification, and a capped shared findings buffer, with sources, limitations, prerequisites, and measurable acceptance targets. These are proposals, not completed implementation or an expansion of MVP execution authority.
+
 ## License
 
 No license has been selected yet.
