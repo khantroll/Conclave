@@ -19,6 +19,7 @@ Nothing here is ticked yet. `docs/IMPLEMENTATION-STATUS.md` records where each o
 - [ ] `node --check web/app.js` passes.
 - [ ] The mock benchmark (`tests/benchmark`) passes on every fixture. (P1-7)
 - [ ] CI runs all of the above on the Python version named in the README.
+- [ ] Running `pytest` in a directory that holds a real `conclave.json`, `.env` and `conclave.db` sends no network request, changes no row in that database, creates no file there, and passes. (P0-6)
 
 ## Data integrity
 

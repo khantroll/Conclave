@@ -3,7 +3,7 @@
 - Date: 2026-11-10.
 - Implementation audited: branch `feature/mvp-scaffold` at `c2285d6` (2026-10-24). All file and line references below are to that commit.
 - This document lives on a docs branch cut from `main`, so the code it cites is not in the same tree until the implementation is merged.
-- Method: read every source file (`src/conclave`, 1,500 lines; `web/app.js`), ran the CI steps locally, and wrote 16 throwaway tests in a scratch directory outside the repo using fake providers only. No provider was called, no credit was spent, and no application code was changed.
+- Method: read every source file (`src/conclave`, 1,500 lines; `web/app.js`), ran the CI steps locally, and wrote 16 throwaway tests in a scratch directory outside the repo using fake providers only, and ran the suite once beside a config pointing at a local stand-in server (F23). No provider was called, no credit was spent, and no application code was changed.
 
 Each finding is labelled:
 
@@ -124,6 +124,13 @@ Impact is bounded today: Conclave executes nothing and has no tools, so a succes
 
 ### Tests and maintainability
 
+**F23. Running the tests uses the real configuration and the real database. Confirmed.** `tests/test_api.py:3-6` imports the module-level `app`, which loads `conclave.json` and `.env` from the working directory and opens `conclave.db` and `run_logs/` there (`api.py:50-51`, `103-106`, `426`). Two effects:
+
+- Every `pytest` run writes two fake runs ("Should Conclave survive partial failures?", "test") into the default database and two files into `run_logs/`. Reproduced in a clean checkout.
+- `test_all_configured_providers_endpoint` posts to `/api/providers/test-all`. With a `conclave.json` naming two providers at a local stand-in server, the suite sent one chat-completion request to each, and two tests failed (`test_health` expects zero configured providers). On a machine with real providers configured, running the tests therefore calls each of them once and cannot pass.
+
+CI is unaffected because it has no `conclave.json`.
+
 - 66 tests, all against fakes. Line coverage 93%; the lowest file is `analyzer.py` at 78%.
 - The browser console (643 lines) has a syntax check and no tests.
 - Nothing after `4b5d72c` (2026-10-09) has been run against a real provider: bounded retries, Critic/Arbiter fallbacks, HTTP-date backoff and the run logs are verified with fakes only.
@@ -215,7 +222,7 @@ Nothing in v1.0 should be added for these. The one v1.0 item that also serves th
 
 **Safe sequence** (nothing here has been done; each step needs approval):
 
-1. Run the local checks in section 1. Push anything found to `feature/mvp-scaffold`.
+1. Run the local checks in section 1. Push anything found to `feature/mvp-scaffold`. Do not run `pytest` in that checkout until F23 is fixed; use a fresh clone with no `conclave.json`.
 2. Merge this documentation pull request into `main`.
 3. Update `feature/mvp-scaffold` from `main` (merge, not rebase, to keep the 208 commits' hashes) and confirm CI.
 4. Mark PR #1 ready and merge it with a merge commit. Tag the result `v0.1.0`.
@@ -227,9 +234,9 @@ Nothing in v1.0 should be added for these. The one v1.0 item that also serves th
 
 1. **Is the architecture worth preserving?** Yes. A provider interface, an orchestrator that depends only on it, a store, and a thin API is the right shape and the right size. Nothing found needs a rewrite or a new dependency.
 2. **What is genuinely working?** Parallel dispatch with per-delegate timeouts; partial success; bounded retry on transient HTTP errors; Critic and Arbiter stages with fallbacks; exact prompt and raw response capture; workspaces; saved runs with request snapshots; stage retries; JSON run logs; the console. All verified with fakes. One real end-to-end run is on record from 2026-10-09; nothing since has been run live.
-3. **What threatens reliability or correctness?** Paid work lost if the last stage dies (F15). Empty answers and duplicate delegates counted as independent successes (F1, F3). The Arbiter not told what failed (F4). Forged structure from delegate text (F19). Unauthenticated endpoints that spend calls (F20). Unbounded history responses (F17).
+3. **What threatens reliability or correctness?** Paid work lost if the last stage dies (F15). Empty answers and duplicate delegates counted as independent successes (F1, F3). The Arbiter not told what failed (F4). Forged structure from delegate text (F19). Unauthenticated endpoints that spend calls (F20). Unbounded history responses (F17). A test suite that calls real providers and writes into the real history when run in a configured checkout (F23).
 4. **Is the Critic/Arbiter design providing measurable value?** Unknown, because nothing has been measured. The Arbiter is required for the product to exist. The Critic is unproven and should be off by default until the Stage B benchmark says otherwise.
 5. **Is it close to v1.0?** Closer than the branch layout suggests. The plumbing is done. What remains is about fifteen small, well-bounded changes and one benchmark, set out in `ROADMAP-TO-V1.md`.
-6. **Shortest safe path?** Merge to `main`; fix the five P0 items; make the Arbiter's input honest and its output structured; add the mock benchmark as a CI gate; run one approved real-model acceptance pass; tag.
+6. **Shortest safe path?** Merge to `main`; fix the P0 items; make the Arbiter's input honest and its output structured; add the mock benchmark as a CI gate; run one approved real-model acceptance pass; tag.
 7. **What to defer or discard?** Discard for now: R01 runtime delegate scope (there are no tools or dispatches for a delegate to hijack) and R02 evidence receipts (requires tool execution, which is out of scope). Defer: R03 shared findings buffer (it trades away independence, the property Conclave exists to provide), native provider adapters, semantic claim extraction, retrieval, multi-user access, streaming, and every integration.
 8. **Standalone or reusable service?** Standalone for v1.0. Afterwards, an optional local service that other projects may call and must be able to live without. It should never sit in the path of a deterministic safety control.

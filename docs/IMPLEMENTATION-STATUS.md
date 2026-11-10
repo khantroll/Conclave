@@ -102,6 +102,7 @@ As of 2026-11-10, for `feature/mvp-scaffold` at `c2285d6`. The default branch `m
 | Capability | Status | Notes |
 |---|---|---|
 | CI: compile, Ruff, JS syntax, pytest | Verified (auto) | Green on the last push and on PR #1; runs Python 3.11 |
+| Test isolation from real config and data | Defective | In a configured checkout the suite calls each provider once and writes two runs into the real database (F23); fix planned (P0-6) |
 | Keys only in environment variables | Verified (auto) | No secret found in 214 commits |
 | Mock benchmark | Planned (P1-7) | |
 | Real-model benchmark | Planned (P2-3) | Needs cost approval |

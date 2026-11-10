@@ -1,6 +1,6 @@
 # Conclave — roadmap to v1.0
 
-Written 2026-11-10 against `feature/mvp-scaffold` at `c2285d6`. Finding numbers (F1–F22) refer to `docs/AUDIT.md`.
+Written 2026-11-10 against `feature/mvp-scaffold` at `c2285d6`. Finding numbers (F1–F23) refer to `docs/AUDIT.md`.
 
 ## What v1.0 is
 
@@ -24,7 +24,7 @@ Complexity key: **S** is under half a day, **M** is one to two days, **L** is th
 
 ## Order of work
 
-P0-1 first (everything else lands on `main`). Then P0-2 to P0-5 in any order. P1-1 and P1-2 before P1-7, because the benchmark asserts on them. P1-9 last.
+P0-1 first (everything else lands on `main`). Then P0-6, because it makes the test suite safe to run where Conclave is configured. Then P0-2 to P0-5 in any order. P1-1 and P1-2 before P1-7, because the benchmark asserts on them. P1-9 last.
 
 ---
 
@@ -79,6 +79,16 @@ P0-1 first (everything else lands on `main`). Then P0-2 to P0-5 in any order. P1
 - **Complexity.** S.
 - **Tests.** Two empty answers with quorum 2: not synthesizeable, no Critic or Arbiter call. Duplicate delegates on the direct endpoint: 422. Unknown Arbiter on the direct endpoint: 422.
 - **Acceptance.** `successful_count` never includes an empty or repeated delegate.
+
+### P0-6. Make the test suite safe to run in a configured checkout (F23)
+
+- **Problem.** `pytest` loads the real `conclave.json` and `.env`, calls every configured provider once, writes fake runs into the real database and run logs, and fails two tests.
+- **Modules.** `api.py`, `tests/test_api.py`, new `tests/conftest.py`.
+- **Implementation.** Give `create_app` optional `config` and `run_log_dir` parameters. In `tests/conftest.py`, an autouse fixture sets `CONCLAVE_CONFIG_PATH` to a path that does not exist, sets `CONCLAVE_DB_PATH` and `CONCLAVE_RUN_LOG_DIR` under `tmp_path`, and changes directory to `tmp_path`. Replace the module-level `client = TestClient(app)` with a fixture that builds an app from an empty config and a temporary store. Keep `app = create_app()` for uvicorn, but do not import it in tests.
+- **Dependencies.** P0-1.
+- **Complexity.** S.
+- **Tests.** A test that writes a `conclave.json` naming a provider at an unroutable address into the starting directory, runs a health check and a test-all through the fixture app, and asserts zero configured providers and no file created outside `tmp_path`.
+- **Acceptance.** Running `pytest` in a directory containing a real `conclave.json`, `.env` and `conclave.db` sends no network request, leaves the database's row counts unchanged, creates no file, and passes.
 
 ---
 
@@ -209,4 +219,4 @@ Do these only after v1.0 unless one turns out to be trivial alongside a P1 item.
 
 ## Size of the remaining work
 
-P0: one process step and four changes, about four working days. P1: nine items, about ten working days including the acceptance run. Roughly three weeks of focused work to v1.0, with no rewrite and no new dependency.
+P0: one process step and five changes, about four working days. P1: nine items, about ten working days including the acceptance run. Roughly three weeks of focused work to v1.0, with no rewrite and no new dependency.
