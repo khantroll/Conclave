@@ -36,7 +36,7 @@ git log --oneline origin/feature/mvp-scaffold..HEAD
 git branch -vv
 ```
 
-Any output from the first, second or fourth command is work that exists only locally. `conclave.json`, `.env`, `conclave.db` and `run_logs/` are ignored by design and are expected to exist only there.
+Any output from the first, second or fourth command is work that exists only locally. `docs/ROADMAP-TO-V1.md` item P0-0 has the full inventory, including worktrees, ignored files and backups. `conclave.json`, `.env`, `conclave.db` and `run_logs/` are ignored by design and are expected to exist only there.
 
 ## 2. What the code does
 
@@ -173,24 +173,26 @@ What can be said from the design:
 
 About 20 fixtures in one JSON file and one test module. Runs in CI in under a second. It turns the findings above into regression gates.
 
-**Stage B — real models, only with explicit cost approval.**
+**Stage B — real models, only with explicit cost approval.** *Superseded in roadmap revision 2:* the Critic decision now comes from a cheaper judge benchmark with scripted panels and a three-outcome rule (P1-13). The end-to-end design below remains as P2-1, with one change: the panel answers are reused across arms, so the arms differ only downstream.
 
 - 30 questions with checkable answers, fixed in a file: 10 factual with one correct answer, 10 where the correct response is "cannot be determined from what is given", 10 multi-step reasoning or code-review items with a known flaw.
 - Four arms on the same questions: (1) the strongest single configured model; (2) panel + Arbiter, no Critic; (3) panel + Critic + Arbiter; (4) the same model three times + Arbiter, to separate model diversity from mere repetition.
 - Score each final answer blind to its arm: correct or not; for the "cannot be determined" set, whether it said so; count of unsupported claims; whether a real disagreement among delegates appears in the synthesis.
 - Record wall time, calls, tokens and cost from the run logs.
-- Decision rules, fixed in advance. Keep the Critic on by default only if arm 3 beats arm 2 by at least 3 of 30 correct or halves unsupported claims. Keep panels as the default only if arm 2 or 3 beats arm 1 by at least 3 of 30. If arm 4 matches arm 2, the benefit comes from repetition and diversity adds nothing measurable.
+- Decision rules, fixed in advance. The Critic rule is replaced by P1-13. Claim that panels beat one model only if arm 2 or 3 beats arm 1 by at least 3 of 30. If arm 4 matches arm 2, the benefit comes from repetition and diversity adds nothing measurable.
 - Size: about 330 provider calls. On the free tiers already configured this costs nothing but will hit rate limits and take several sessions. On paid mid-tier models, a rough estimate is a few dollars; compute it from the provider's current prices before approving. Thirty questions is a screening result, not proof.
 
 ### Smallest implementation that keeps the unique value
 
 1. One question to N delegates in parallel, each with its own timeout.
 2. Raw answers side by side, with exact prompts, saved.
-3. One Arbiter pass that must return labelled sections, told how many delegates answered and which did not.
-4. Honest labels: single-source, near-identical answers, empty answers.
-5. Retry of a failed stage.
+3. One blind Arbiter pass that must return labelled sections, told how many independent sources answered and which slots did not.
+4. Each delegate's own conclusion and confidence shown verbatim beside the synthesis.
+5. Honest counting and labels: one source per underlying model, near-identical answers merged, single-source and empty answers labelled.
+6. Model output treated as data on every path.
+7. Retry of a failed stage.
 
-Everything else is optional for v1.0: the Critic stays as a switch, auto-selection stays off by default, fallbacks stay.
+Everything else is optional for v1.0. The Critic stays optional, with its default set by evidence (roadmap P1-13). Auto-selection stays off by default. Fallbacks stay.
 
 ## 5. Future integration
 
@@ -198,6 +200,8 @@ Current interfaces: a REST API returning the full result as JSON with the run id
 
 - Usable today by another program for "ask a panel, get text back". The orchestrator has no dependency on FastAPI or SQLite, which is the right seam.
 - Not ready as a dependency: the call blocks for the whole pipeline, there is no authentication, the final answer is free text with no machine-readable verdict, and F19 means a consumer would be acting on text an upstream model can steer.
+
+The rules for any later integration (optional on both sides, advisory only, never in a safety path, structured fields only, a versioned contract first) are in the roadmap section "Post-v1.0 architectural direction".
 
 Per project, as optional and advisory only:
 
@@ -213,21 +217,21 @@ Nothing in v1.0 should be added for these. The one v1.0 item that also serves th
 ## 6. Repository readiness
 
 - **Should the implementation merge into `main`? Yes.** The default branch does not contain the application, which is the largest integrity problem in the repository. The merge is clean and CI is green.
-- **Blockers before merging:** confirm the local checkout has no unpushed work (section 1).
+- **Blockers before merging:** the local inventory and backups in roadmap item P0-0, reviewed by the owner.
 - **Not blockers:** the findings above. They are better fixed in small pull requests against `main` than on a 208-commit branch.
 - **Secrets:** none found in history.
 - **Documentation conflicts:** `README.md`, `docs/MVP.md` and `docs/ARCHITECTURE.md` differ between branches; git merges them without conflict, and the result should be read once after merging. The four documents in this pull request are new files and collide with nothing.
-- **Author name:** three commits (`cf425b8`, `4a0a13a` on `main`; `c2285d6` on the feature branch) carry a personal name where the other 211 carry `khantroll`. Changing them means rewriting history and force-pushing. Decide before merging if it matters; it is far harder afterwards.
+- **Author name:** three commits (`cf425b8`, `4a0a13a` on `main`; `c2285d6` on the feature branch) carry a personal name where the other 211 carry `khantroll`. A `.mailmap` entry fixes local `git log` and `shortlog` without touching history. GitHub's web view ignores it; only a rewrite and force-push changes that. A rewrite needs explicit approval and a backup branch at the old tip, and is far harder after PR #1 merges.
 - **No licence** is selected. Fine for a private repository; decide before any sharing.
 
 **Safe sequence** (nothing here has been done; each step needs approval):
 
-1. Run the local checks in section 1. Push anything found to `feature/mvp-scaffold`. Do not run `pytest` in that checkout until F23 is fixed; use a fresh clone with no `conclave.json`.
+1. Run the P0-0 inventory and back up the installation files. Push any local-only commits to a new `rescue/<machine>-<date>` branch, never onto an existing branch. Do not run `pytest` in that checkout until F23 is fixed (P0-2).
 2. Merge this documentation pull request into `main`.
 3. Update `feature/mvp-scaffold` from `main` (merge, not rebase, to keep the 208 commits' hashes) and confirm CI.
 4. Mark PR #1 ready and merge it with a merge commit. Tag the result `v0.1.0`.
 5. Add branch protection on `main` requiring the `test` check.
-6. Keep `feature/mvp-scaffold` until v1.0 is tagged, then delete it.
+6. Keep `feature/mvp-scaffold`. Delete it only on explicit approval, once `git merge-base --is-ancestor` confirms it is contained in `main`.
 7. Do all roadmap work as short-lived branches from `main`.
 
 ## 7. Final recommendation
@@ -235,8 +239,8 @@ Nothing in v1.0 should be added for these. The one v1.0 item that also serves th
 1. **Is the architecture worth preserving?** Yes. A provider interface, an orchestrator that depends only on it, a store, and a thin API is the right shape and the right size. Nothing found needs a rewrite or a new dependency.
 2. **What is genuinely working?** Parallel dispatch with per-delegate timeouts; partial success; bounded retry on transient HTTP errors; Critic and Arbiter stages with fallbacks; exact prompt and raw response capture; workspaces; saved runs with request snapshots; stage retries; JSON run logs; the console. All verified with fakes. One real end-to-end run is on record from 2026-10-09; nothing since has been run live.
 3. **What threatens reliability or correctness?** Paid work lost if the last stage dies (F15). Empty answers and duplicate delegates counted as independent successes (F1, F3). The Arbiter not told what failed (F4). Forged structure from delegate text (F19). Unauthenticated endpoints that spend calls (F20). Unbounded history responses (F17). A test suite that calls real providers and writes into the real history when run in a configured checkout (F23).
-4. **Is the Critic/Arbiter design providing measurable value?** Unknown, because nothing has been measured. The Arbiter is required for the product to exist. The Critic is unproven and should be off by default until the Stage B benchmark says otherwise.
-5. **Is it close to v1.0?** Closer than the branch layout suggests. The plumbing is done. What remains is about fifteen small, well-bounded changes and one benchmark, set out in `ROADMAP-TO-V1.md`.
-6. **Shortest safe path?** Merge to `main`; fix the P0 items; make the Arbiter's input honest and its output structured; add the mock benchmark as a CI gate; run one approved real-model acceptance pass; tag.
-7. **What to defer or discard?** Discard for now: R01 runtime delegate scope (there are no tools or dispatches for a delegate to hijack) and R02 evidence receipts (requires tool execution, which is out of scope). Defer: R03 shared findings buffer (it trades away independence, the property Conclave exists to provide), native provider adapters, semantic claim extraction, retrieval, multi-user access, streaming, and every integration.
+4. **Is the Critic/Arbiter design providing measurable value?** Unknown, because nothing has been measured. The Arbiter is required for the product to exist. The Critic is unproven. Its default should come from the judge benchmark (roadmap P1-13); until then there should be no default, and each workspace should choose explicitly.
+5. **Is it close to v1.0?** Closer than the branch layout suggests. The plumbing is done. Roadmap revision 2 sets out about five weeks of bounded work, with no rewrite and no new dependency.
+6. **Shortest safe path?** Inventory and back up local work. Merge to `main`. Isolate the tests. Fix the remaining P0 items. Make source counting honest, judging blind and the Arbiter's output structured. Gate CI on the mock benchmark and the injection suite. Run the approved judge benchmark and acceptance pass. Tag.
+7. **What to defer or discard?** Discard for now: R01 runtime delegate scope (there are no tools or dispatches for a delegate to hijack; the part that applies, giving model text no authority, is roadmap P0-4 and P1-2) and R02 evidence receipts (requires tool execution, which is out of scope). Defer: R03 shared findings buffer (it trades away independence, the property Conclave exists to provide), native provider adapters, semantic claim extraction, retrieval, multi-user access, streaming, and every integration.
 8. **Standalone or reusable service?** Standalone for v1.0. Afterwards, an optional local service that other projects may call and must be able to live without. It should never sit in the path of a deterministic safety control.
