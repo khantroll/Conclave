@@ -88,6 +88,28 @@ class PositionRow(BaseModel):
     confidence_text: str | None = None
 
 
+class StructuredPoint(BaseModel):
+    """One point in an Arbiter section, with the response labels it cites."""
+
+    text: str
+    citations: list[str] = Field(default_factory=list)
+
+
+class ArbiterStructure(BaseModel):
+    """The Arbiter's answer read as four sections. Stored beside the untouched raw answer."""
+
+    format_ok: bool
+    # Why the answer was not accepted (fixed wording, never model text). Empty when format_ok.
+    problems: list[str] = Field(default_factory=list)
+    # common_ground, disagreements, uncertainty, synthesis (only when format_ok).
+    sections: dict[str, str] = Field(default_factory=dict)
+    points: dict[str, list[StructuredPoint]] = Field(default_factory=dict)
+    # Cited labels that do not exist in this run.
+    unknown_citations: list[str] = Field(default_factory=list)
+    # Points under the first three sections that cite no response (and are not "None.").
+    uncited_points: int = 0
+
+
 class PanelRequest(BaseModel):
     question: str = Field(min_length=1)
     delegates: list[DelegateRequest] = Field(min_length=1)
@@ -169,6 +191,8 @@ class DeliberationResult(BaseModel):
     positions: list[PositionRow] = Field(default_factory=list)
     # Every independent source says "insufficient evidence", or the Arbiter's synthesis begins so.
     insufficient_evidence: bool = False
+    # None for runs without a (multi-source) Arbiter answer, and for runs saved before this.
+    arbiter_structure: ArbiterStructure | None = None
 
 
 class WorkspaceCreate(BaseModel):

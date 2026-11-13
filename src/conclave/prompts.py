@@ -285,6 +285,23 @@ def build_critic_prompt(
     return "\n\n".join(sections)
 
 
+ARBITER_FORMAT_REQUEST = (
+    "Produce the final answer for the user. Write it with exactly these four headings, each "
+    "alone on its own line, each once, in this order, with nothing before the first heading:\n"
+    "## Common ground\n"
+    "## Disagreements\n"
+    "## Uncertainty\n"
+    "## Synthesis\n"
+    "Under the first three headings write short points, one per bullet, and end each point "
+    "with the labels of the responses it rests on, for example [A] or [A, C]. Common ground "
+    "is what the responses genuinely share; Disagreements are material disagreements and "
+    "minority insights worth keeping (write None. if there are none); Uncertainty is "
+    "unsupported assumptions and what remains unknown. Under ## Synthesis give your final "
+    "answer or recommendation; begin it with the words \"Insufficient evidence\" if the "
+    "responses do not support an answer. Do not merely summarize each delegate in sequence."
+)
+
+
 def build_arbiter_prompt(
     *,
     question: str,
@@ -339,10 +356,5 @@ def build_arbiter_prompt(
             "of sources."
         )
         return "\n\n".join(sections)
-    sections.append(
-        "Produce the final answer for the user. Explicitly distinguish: (1) common ground, "
-        "(2) material disagreements or minority insights, (3) unsupported assumptions or "
-        "important uncertainty, and (4) your final synthesis/recommendation. Do not merely "
-        "summarize each delegate in sequence."
-    )
+    sections.append(ARBITER_FORMAT_REQUEST)
     return "\n\n".join(sections)

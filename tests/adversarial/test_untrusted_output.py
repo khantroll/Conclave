@@ -6,6 +6,7 @@ real model would be persuaded: this suite shows that model text has no authority
 judge model resists persuasion. That is measured separately (roadmap P1-13).
 """
 
+import asyncio
 import json
 import re
 import sqlite3
@@ -159,15 +160,60 @@ def test_a_hostile_answer_changes_only_its_own_position_row(fixture):
     assert hostile.result.insufficient_evidence == control.result.insufficient_evidence
 
 
-def test_only_arbiter_output_is_parsed_for_sections():
-    synthesis = pytest.importorskip(
-        "conclave.synthesis",
-        reason="needs P1-6 (structured Arbiter output), which is not built yet.",
-    )
+def test_a_forged_shape_is_never_accepted_as_a_structured_answer():
+    """``parse_sections`` is strict: only text that is exactly the four headings in order passes.
+    Every other fixture, including forged judge material and forged structure, is rejected."""
+    from conclave.synthesis import parse_sections
+
     for item in FIXTURES:
-        parsed = synthesis.parse_sections(item["text"])
-        if item["class"] in {4, 5}:
-            assert parsed.format_ok is False, item["id"]
+        parsed = parse_sections(item["text"])
+        assert parsed.format_ok is (item["id"] == "structure-four-headings"), item["id"]
+        if not parsed.format_ok:
+            assert parsed.sections == {} and parsed.problems, item["id"]
+
+
+@pytest.mark.parametrize("fixture", FIXTURE_IDS)
+def test_only_the_arbiters_own_answer_is_read_as_sections(fixture):
+    """Hostile text in a delegate's answer or the Critic's never reaches the section parser: the
+    stored structure is the one for the (benign) Arbiter answer, byte for byte."""
+    for scenario in ("delegate_to_arbiter", "delegate_to_critic", "critic_to_arbiter"):
+        hostile = run_scenario(scenario, fixture)
+        control = run_scenario(scenario, None)
+        assert hostile.result.arbiter_structure == control.result.arbiter_structure, scenario
+
+
+@pytest.mark.parametrize("fixture", FIXTURE_IDS)
+def test_a_hostile_arbiter_answer_is_stored_untouched_and_changes_nothing_else(fixture):
+    from conclave.models import DeliberationRequest
+    from conclave.orchestrator import Orchestrator
+    from conclave.synthesis import parse_sections
+
+    text = FIXTURES_BY_ID[fixture]["text"]
+
+    def run(arbiter_text):
+        providers = {
+            "a": FakeProvider("Answer one about the topic, with its own wording."),
+            "b": FakeProvider("A different answer with other words entirely here."),
+            "critic": FakeProvider("critique"),
+            "arbiter": FakeProvider(arbiter_text),
+        }
+        request = DeliberationRequest(
+            question="q", delegates=["a", "b"], critic="critic", arbiter="arbiter",
+            minimum_successes=2, seed="s",
+        )
+        return asyncio.run(Orchestrator(providers).deliberate(request))
+
+    result, control = run(text), run(SYNTHESIS)
+    assert result.arbiter.raw_response == text  # stored exactly as received
+    assert result.arbiter_structure == parse_sections(text, result.label_map)
+    assert (result.panel.independent_source_count, result.panel.quorum.status) == (
+        control.panel.independent_source_count,
+        control.panel.quorum.status,
+    )
+    assert [d.status for d in result.panel.delegates] == [d.status for d in control.panel.delegates]
+    assert result.critic.status == control.critic.status
+    assert result.positions == control.positions
+    assert result.judge_overlaps == control.judge_overlaps and result.label_map == control.label_map
 
 
 # ----------------------------------------------------- API level: saved rows, logs

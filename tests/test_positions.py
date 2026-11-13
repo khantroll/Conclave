@@ -176,15 +176,24 @@ def test_a_source_counts_only_when_all_its_members_say_so():
     assert insufficient_evidence(rows, [SourceGroup(delegates=["a", "b"], reason="same_config")]) is True
 
 
+def _arbiter(synthesis):
+    return (
+        "## Common ground\n- x [A]\n\n## Disagreements\nNone.\n\n"
+        "## Uncertainty\n- y [B]\n\n## Synthesis\n" + synthesis
+    )
+
+
 @pytest.mark.parametrize(
     "text,expected",
     [
-        ("## Synthesis\nInsufficient evidence to answer.", True),
-        ("## Synthesis\n\n  insufficient evidence: the responses conflict", True),
-        ("## Common ground\nx\n## Synthesis\nInsufficient evidence", True),
-        ("## Synthesis\nThe answer is yes. Insufficient evidence elsewhere.", False),
+        (_arbiter("Insufficient evidence to answer."), True),
+        (_arbiter("\n  insufficient evidence: the responses conflict"), True),
+        (_arbiter("The answer is yes. Insufficient evidence elsewhere."), False),
+        (_arbiter("There is insufficient evidence on cost, but yes."), False),
+        (_arbiter(""), False),
+        # Anything that is not the four-section shape is shown raw and sets no flag.
+        ("## Synthesis\nInsufficient evidence to answer.", False),
         ("Synthesis\nInsufficient evidence", False),
-        ("## Synthesis", False),
         ("Insufficient evidence", False),
         ("", False),
         (None, False),
@@ -197,7 +206,7 @@ def test_the_arbiter_rule(text, expected):
 def test_the_arbiter_rule_applies_even_when_sources_are_confident():
     rows = _rows("high", "high")
     groups = [SourceGroup(delegates=["a"]), SourceGroup(delegates=["b"])]
-    assert insufficient_evidence(rows, groups, "## Synthesis\nInsufficient evidence") is True
+    assert insufficient_evidence(rows, groups, _arbiter("Insufficient evidence")) is True
 
 
 # ------------------------------------------------------------------------- through a run
@@ -207,7 +216,7 @@ def _identity(model, base):
     return ProviderIdentity(base_url=base, model=model)
 
 
-async def _run(answers, arbiter="## Synthesis\nIt is fine.", minimum=2, **extra):
+async def _run(answers, arbiter=_arbiter("It is fine."), minimum=2, **extra):
     names = list(answers)
     providers = {n: FakeProvider(answers[n], model=f"m-{n}") for n in names}
     providers.update(critic=FakeProvider("crit"), arbiter=FakeProvider(arbiter))
@@ -260,7 +269,7 @@ async def test_insufficient_evidence_through_a_run():
     assert (await _run(both)).insufficient_evidence is True
     mixed = {**both, "b": "Conclusion: yes\nConfidence: high"}
     assert (await _run(mixed)).insufficient_evidence is False
-    assert (await _run(mixed, arbiter="## Synthesis\nInsufficient evidence.")).insufficient_evidence is True
+    assert (await _run(mixed, arbiter=_arbiter("Insufficient evidence."))).insufficient_evidence is True
 
 
 async def test_below_quorum_runs_still_show_positions_without_labels():
