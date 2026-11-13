@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from time import perf_counter
 
 from .models import (
@@ -15,6 +15,9 @@ from .models import (
 )
 from .prompts import build_arbiter_prompt, build_critic_prompt, build_delegate_prompt
 from .providers.base import Provider, ProviderError
+
+
+StageCallback = Callable[[DeliberationResult], Awaitable[None]]
 
 
 class Orchestrator:
@@ -54,7 +57,17 @@ class Orchestrator:
             )
         )
 
-    async def deliberate(self, request: DeliberationRequest) -> DeliberationResult:
+    async def deliberate(
+        self,
+        request: DeliberationRequest,
+        *,
+        on_stage: StageCallback | None = None,
+    ) -> DeliberationResult:
+        """Run the panel, Critic and Arbiter.
+
+        ``on_stage`` is awaited with the result so far after the panel, after
+        the Critic and after the Arbiter, so callers can persist each stage.
+        """
         panel_request = PanelRequest(
             question=request.question,
             delegates=[
@@ -73,11 +86,14 @@ class Orchestrator:
         )
         panel = await self.run_panel(panel_request)
 
+        after_panel = DeliberationResult(
+            panel=panel,
+            estimated_cost_usd=_total_cost(panel.delegates),
+        )
+        if on_stage is not None:
+            await on_stage(after_panel)
         if not panel.synthesizeable:
-            return DeliberationResult(
-                panel=panel,
-                estimated_cost_usd=_total_cost(panel.delegates),
-            )
+            return after_panel
 
         critic: DelegateResult | None = None
         if request.critic:
@@ -91,6 +107,14 @@ class Orchestrator:
                 ),
                 timeout_seconds=request.critic_timeout_seconds,
             )
+            if on_stage is not None:
+                await on_stage(
+                    DeliberationResult(
+                        panel=panel,
+                        critic=critic,
+                        estimated_cost_usd=_total_cost([*panel.delegates, critic]),
+                    )
+                )
 
         arbiter_prompt = build_arbiter_prompt(
             question=request.question,
@@ -104,12 +128,15 @@ class Orchestrator:
             prompt=arbiter_prompt,
             timeout_seconds=request.arbiter_timeout_seconds,
         )
-        return DeliberationResult(
+        final = DeliberationResult(
             panel=panel,
             critic=critic,
             arbiter=arbiter,
             estimated_cost_usd=_total_cost([*panel.delegates, critic, arbiter]),
         )
+        if on_stage is not None:
+            await on_stage(final)
+        return final
 
     async def retry_delegate(
         self,

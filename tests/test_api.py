@@ -395,3 +395,106 @@ def test_workspace_rejects_invalid_stage_fallbacks(tmp_path):
     )
     assert unknown.status_code == 422
     assert "not-real" in unknown.json()["detail"]
+
+
+# --- stage persistence (P0-3) ---
+
+
+def _delayed_app(tmp_path, monkeypatch, slow_texts):
+    import conclave.api as api_module
+    from conclave.providers.fake import FakeProvider
+
+    def make(response="ok", **kwargs):
+        delay = 5 if response in slow_texts else 0
+        return FakeProvider(response, delay_seconds=delay, **kwargs)
+
+    monkeypatch.setattr(api_module, "FakeProvider", make)
+    store = WorkspaceStore(tmp_path / "t.db", run_log_dir=tmp_path / "logs")
+    return make_app(store), store
+
+
+async def _cancelled_deliberate(app, timeout):
+    import asyncio
+
+    import httpx
+
+    body = {
+        "question": "Should we ship?",
+        "delegates": ["demo-a", "demo-b"],
+        "critic": "demo-critic",
+        "arbiter": "demo-arbiter",
+        "minimum_successes": 2,
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as http:
+        try:
+            await asyncio.wait_for(http.post("/api/deliberate", json=body), timeout)
+        except asyncio.TimeoutError:
+            return
+    raise AssertionError("request was not cancelled")
+
+
+async def test_cancel_during_arbiter_keeps_panel_and_critic(tmp_path, monkeypatch):
+    app, store = _delayed_app(tmp_path, monkeypatch, {"Synthesized demo response"})
+    await _cancelled_deliberate(app, 1.0)
+
+    runs = store.list_runs()
+    assert len(runs) == 1
+    run = store.get_run(runs[0].id)
+    assert run.status == "interrupted"
+    assert run.result.panel.successful_count == 2
+    assert run.result.critic is not None
+    assert run.result.arbiter is None
+    assert list((tmp_path / "logs").glob("*.json"))
+
+
+async def test_cancel_during_panel_leaves_interrupted_row(tmp_path, monkeypatch):
+    app, store = _delayed_app(tmp_path, monkeypatch, {"Delegate A response"})
+    await _cancelled_deliberate(app, 1.0)
+
+    runs = store.list_runs()
+    assert len(runs) == 1
+    assert runs[0].status == "interrupted"
+    assert runs[0].result.panel.delegates == []
+
+
+def test_normal_run_is_one_complete_row(tmp_path):
+    store = WorkspaceStore(tmp_path / "t.db")
+    client = TestClient(make_app(store))
+    response = client.post(
+        "/api/deliberate",
+        json={
+            "question": "Q",
+            "delegates": ["demo-a", "demo-b"],
+            "critic": "demo-critic",
+            "arbiter": "demo-arbiter",
+            "minimum_successes": 2,
+        },
+    )
+    assert response.status_code == 200
+    runs = store.list_runs()
+    assert len(runs) == 1
+    assert runs[0].status == "complete"
+    assert runs[0].result.arbiter is not None
+    assert response.headers["X-Conclave-Run-ID"] == runs[0].id
+
+
+def test_startup_marks_leftover_running_rows_interrupted(tmp_path):
+    store = WorkspaceStore(tmp_path / "t.db")
+    stuck = store.create_run(question="left running")
+    assert store.get_run(stuck.id).status == "running"
+    make_app(store)
+    assert store.get_run(stuck.id).status == "interrupted"
+
+
+def test_interrupted_run_meeting_quorum_can_be_resumed(tmp_path, monkeypatch):
+    import asyncio
+
+    app, store = _delayed_app(tmp_path, monkeypatch, {"Synthesized demo response"})
+    asyncio.run(_cancelled_deliberate(app, 1.0))
+    run_id = store.list_runs()[0].id
+
+    resumed = TestClient(make_app(store)).post(f"/api/runs/{run_id}/arbiter/retry")
+    assert resumed.status_code == 200
+    assert resumed.json()["result"]["arbiter"]["status"] == "succeeded"

@@ -234,3 +234,41 @@ def test_saved_run_writes_pretty_json_audit_log(tmp_path):
     assert payload["run"]["result"]["panel"]["delegates"][0]["attempts"] == 2
     assert payload["run"]["result"]["critic"]["prompt"] == "EXACT CRITIC PROMPT"
     assert payload["run"]["result"]["arbiter"]["raw_response"] == "Final synthesis"
+
+
+def test_old_database_gains_status_columns(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE deliberation_runs (id TEXT PRIMARY KEY, workspace_id TEXT, "
+        "question TEXT NOT NULL, request_json TEXT, result_json TEXT NOT NULL, "
+        "created_at TEXT NOT NULL)"
+    )
+    result = (
+        '{"panel": {"question": "q", "delegates": [], "successful_count": 0, '
+        '"failed_count": 0, "synthesizeable": false}}'
+    )
+    conn.execute(
+        "INSERT INTO deliberation_runs VALUES ('old1', NULL, 'q', NULL, ?, '2026-10-01T00:00:00+00:00')",
+        (result,),
+    )
+    conn.commit()
+    conn.close()
+
+    store = WorkspaceStore(path)
+    run = store.get_run("old1")
+    assert run.status == "complete"
+    assert store.mark_interrupted_runs() == 0
+    assert store.get_run("old1").status == "complete"
+
+
+def test_mark_interrupted_runs_flips_only_running_rows(tmp_path):
+    store = WorkspaceStore(tmp_path / "t.db")
+    running = store.create_run(question="a")
+    done = store.create_run(question="b")
+    store.update_run(done.id, done.result, "complete")
+    assert store.mark_interrupted_runs() == 1
+    assert store.get_run(running.id).status == "interrupted"
+    assert store.get_run(done.id).status == "complete"

@@ -11,6 +11,7 @@ from .models import (
     DeliberationRequest,
     DeliberationResult,
     DeliberationRun,
+    PanelResult,
     Workspace,
     WorkspaceCreate,
     WorkspaceReplace,
@@ -92,6 +93,18 @@ class WorkspaceStore:
                 connection,
                 table="deliberation_runs",
                 column="request_json",
+                definition="TEXT",
+            )
+            self._ensure_column(
+                connection,
+                table="deliberation_runs",
+                column="status",
+                definition="TEXT NOT NULL DEFAULT 'complete'",
+            )
+            self._ensure_column(
+                connection,
+                table="deliberation_runs",
+                column="updated_at",
                 definition="TEXT",
             )
             connection.execute(
@@ -224,20 +237,69 @@ class WorkspaceStore:
         request: DeliberationRequest | None = None,
         workspace_id: str | None = None,
     ) -> DeliberationRun:
+        """Insert a finished run in one step."""
+        run = self._insert_run(
+            question=question,
+            result=result,
+            request=request,
+            workspace_id=workspace_id,
+            status="complete",
+        )
+        self._write_run_log(run)
+        return run
+
+    def create_run(
+        self,
+        *,
+        question: str,
+        request: DeliberationRequest | None = None,
+        workspace_id: str | None = None,
+    ) -> DeliberationRun:
+        """Insert a ``running`` row before any provider is called."""
+        empty = DeliberationResult(
+            panel=PanelResult(
+                question=question,
+                delegates=[],
+                successful_count=0,
+                failed_count=0,
+                synthesizeable=False,
+            )
+        )
+        return self._insert_run(
+            question=question,
+            result=empty,
+            request=request,
+            workspace_id=workspace_id,
+            status="running",
+        )
+
+    def _insert_run(
+        self,
+        *,
+        question: str,
+        result: DeliberationResult,
+        request: DeliberationRequest | None,
+        workspace_id: str | None,
+        status: str,
+    ) -> DeliberationRun:
+        now = _now()
         run = DeliberationRun(
             id=str(uuid4()),
             workspace_id=workspace_id,
             question=question,
             request=request,
             result=result,
-            created_at=_now(),
+            created_at=now,
+            status=status,
+            updated_at=now,
         )
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO deliberation_runs (
-                    id, workspace_id, question, request_json, result_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    id, workspace_id, question, request_json, result_json,
+                    created_at, status, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.id,
@@ -246,10 +308,61 @@ class WorkspaceStore:
                     run.request.model_dump_json() if run.request else None,
                     run.result.model_dump_json(),
                     run.created_at,
+                    run.status,
+                    run.updated_at,
                 ),
             )
-        self._write_run_log(run)
         return run
+
+    def update_run(
+        self,
+        run_id: str,
+        result: DeliberationResult,
+        status: str,
+    ) -> None:
+        """Store the result so far. The run log is written once the run ends."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE deliberation_runs
+                SET result_json = ?, status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (result.model_dump_json(), status, _now(), run_id),
+            )
+        if status != "running":
+            run = self.get_run(run_id)
+            if run is not None:
+                self._write_run_log(run)
+
+    def mark_interrupted(self, run_id: str) -> None:
+        """Mark a run interrupted, keeping every stage already stored."""
+        self._mark_interrupted(run_id=run_id)
+
+    def mark_interrupted_runs(self) -> int:
+        """Mark every ``running`` row interrupted. Call at startup."""
+        return self._mark_interrupted(run_id=None)
+
+    def _mark_interrupted(self, *, run_id: str | None) -> int:
+        where = "status = 'running'" + (" AND id = ?" if run_id else "")
+        params: tuple = (run_id,) if run_id else ()
+        with self._connect() as connection:
+            ids = [
+                row["id"]
+                for row in connection.execute(
+                    f"SELECT id FROM deliberation_runs WHERE {where}", params
+                ).fetchall()
+            ]
+            connection.execute(
+                "UPDATE deliberation_runs SET status = 'interrupted', updated_at = ? "
+                f"WHERE {where}",
+                (_now(), *params),
+            )
+        for item in ids:
+            run = self.get_run(item)
+            if run is not None:
+                self._write_run_log(run)
+        return len(ids)
 
     def _write_run_log(self, run: DeliberationRun) -> None:
         if self.run_log_dir is None:
@@ -331,6 +444,8 @@ class WorkspaceStore:
             ),
             result=DeliberationResult.model_validate_json(row["result_json"]),
             created_at=row["created_at"],
+            status=row["status"] if "status" in row.keys() else "complete",
+            updated_at=row["updated_at"] if "updated_at" in row.keys() else None,
         )
 
 
