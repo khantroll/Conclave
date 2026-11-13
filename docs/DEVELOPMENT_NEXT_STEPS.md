@@ -1,42 +1,42 @@
-# Development handoff — October 24, 2026
+# Development status and next steps
 
-## Current state
+Last updated 2026-11-13. This replaces the October 24 handoff note, whose branch and runtime assumptions are out of date. It points only at files that are on `main`.
 
-Implementation remains on `feature/mvp-scaffold` in draft PR #1. Main contains planning and the October 23 research roadmap; it is not the runnable application branch. Do not replace the implementation with main or lose main's newer research notes when reconciling branches.
+## Where things stand
 
-The manual test log records successful demo testing on October 7 and real Delegate → Critic → Arbiter synthesis on October 9, using Groq/OpenRouter while Gemini returned 503 and Mistral returned 429. Those observations are historical, not a current provider availability check.
+The v1 pipeline is implemented on `main` and covered by tests: independent-source quorum, blind judging, positions, the Arbiter's structured output, provider error classes and fallback trails, length and prompt-size controls, the call ledger, retry chains, a bounded history, a schema version with a verified backup before upgrades, an adversarial suite for untrusted model output, and a mock benchmark of thirteen invariants. `README.md` describes what exists and what does not; `docs/CONFIGURATION.md` documents every setting.
 
-Inspection at `ce81e0f` confirmed that bounded transient retries, downstream fallbacks, and automatic run audit exports were already implemented. This continuation adds:
+It has **not** been run against real providers since 2026-10-09 (see `docs/TEST_LOG.md`), before most of this work.
 
-- Correct attempt telemetry on exhausted HTTP retries and subsequent transport/response failures.
-- HTTP-date Retry-After handling, including past dates and invalid/non-finite values.
-- Regression coverage for all four transient statuses, malformed responses, transport failures, and cancellation during backoff while another Delegate succeeds.
-- Clarified timeout boundaries: each fallback provider gets its own timeout.
+## Remaining work, in order
 
-Validation: 66 tests pass on Python 3.12; Ruff, Python compilation, JavaScript syntax, and diff whitespace checks pass. A Starlette TestClient/httpx deprecation warning remains. No live provider calls were made and no browser interaction was performed in this continuation.
+1. **Real-provider acceptance run** (needs your approval of the cost; free tiers are enough). Follow `docs/MANUAL_TEST.md` on at least three providers from at least two model families, against a copy of your real database: all healthy; one delegate forced to fail with a wrong key; the primary Arbiter forced to fail so its fallback answers; two provider names on one model counting as one source; an interrupted run; one retry; saved judge prompts inspected for blinding; and ledger totals reconciled against each provider's own usage or billing page. Record the results in `docs/TEST_LOG.md` with the date, commit, providers and families.
+2. **Judge benchmark** (paid; needs approval). `bench/judge/` compares the Arbiter alone with the Critic then the Arbiter on real judge models. Until it has been run there is no Critic default. Its decision rule is fixed in advance and is in `bench/judge/README.md`.
+3. **Update your live checkout carefully.** It is behind `main`. Before pulling, back up `.env`, `conclave.json` and `conclave.db`. The database upgrades itself (with its own verified backup). Add `"router_alias": true` to any gateway entry that picks a model per call (for example `openrouter/free`) so it is identified by what it reports.
+4. **Measure whether a panel beats one strong model**, on a small fixed set of representative questions, comparing correctness, unsupported claims, useful dissent, human correction effort, time and cost. Do not equate agreement with evidence. This has not been done, and the README says so.
 
-## Next steps, in order
+## Improvements that are not needed for a first release
 
-1. **Repeat the real-provider reliability test locally.** Update the existing `feature/mvp-scaffold` checkout, restart Conclave, and test configured providers. Use the previously working Groq/OpenRouter panel first; then retry Gemini/Mistral. Keep configuration and API keys local. Export or retain the automatic run JSON. Pass: successful Delegate output survives a failed provider, Critic/Arbiter complete through configured fallbacks, failures show useful diagnostics and attempt counts, and an isolated retry does not rerun successful Delegates. Use `docs/MANUAL_TEST.md` as the test procedure.
+- A per-run cost ceiling (`max_estimated_cost_usd`) that fails closed when a cost is unknowable. Deliberately a separate change.
+- One shared deadline per stage instead of one per fallback.
+- Returning the run id at once and showing delegate answers while later stages run.
+- Evaluating the keyword router against hand-labelled past questions.
+- Native provider adapters, and semantic claim extraction.
 
-2. **Measure whether the panel improves actual decisions.** Run a small fixed set of representative questions through Conclave and the manual multi-chat workflow. Record correctness, unsupported claims, useful dissent, human correction effort, elapsed time, and reported cost/token usage. Keep models, settings, and questions comparable. Do not equate agreement with evidence. Use this baseline before changing deliberation architecture.
+## Open decisions (not settled; do not treat as decided)
 
-3. **Implement the R01 boundary experiment.** Follow `docs/RESEARCH_ROADMAP_2026-10-23.md` on main. Start with offline adversarial fixtures and runtime-owned participant/task/context scope. Delegate text must never expand authority or trigger new dispatches. Pass: zero unauthorized dispatches/context transfers across 50 cases while legitimate dissent reaches synthesis. This does not add automatic external tool execution.
+- **Critic default.** Unmeasured; explicit choice until the judge benchmark has been run.
+- **Automatic reserve delegates.** Deferred. If built: one bounded replacement wave, keep successful responses, respect a budget, and stop clearly if the quorum is unmet.
+- **Spending cap.** A separate change, not part of the pipeline work.
+- **Panels versus one model.** Unmeasured.
+- **License.** None selected.
 
-4. **Add R02 evidence-backed Critic verification.** Bind actual check receipts to a candidate revision. Failed required checks must deterministically block verification; model assertions alone are insufficient. Start with offline fixtures and clean controls.
+## Research proposals
 
-5. **Consider R03 shared findings only after scope checks and a measured baseline.** Keep it optional and bounded; retain the independent panel as the default until paired evaluation supports a change.
+The research roadmaps (`RESEARCH_ROADMAP_2026-10-23.md` and `RESEARCH_ROADMAP_2026-11-13.md`) are proposals with evidence limits, not approved work or implementation. The runtime-enforced delegate scope, evidence-backed Critic checks and shared findings buffer they describe are not built; the part that applies today, giving model text no authority, is covered by the adversarial suite. Tool-transport and host-permission ideas do not authorize external execution. Newsletter-derived routing stays shadow-only.
 
 ## Known limits
 
-- Timeout results retain the legacy default attempt count, rather than an exact count of interrupted HTTP requests.
-- Fallback results retain the final selected provider; earlier failed fallback outcomes are not a complete stage-by-stage attempt history.
-- Each fallback gets a separate timeout. A shared total stage deadline and richer fallback audit trail remain possible reliability follow-ups.
-- Current account quotas, model availability, and response quality need live testing with the user's configuration.
-- No verified assignment to Codex/Cursor or running instance on Xenos is known from this cloud session.
-
-## Research follow-up — November 13, 2026
-
-See [November 13 research roadmap](RESEARCH_ROADMAP_2026-11-13.md). This addition records proposals only and does not certify the historical branch/runtime status above.
-
-Start with recorded-output coordination fixtures (R04), then contribution-aware Critic evaluation (R05). Reuse the current orchestration and adversarial checks; measure evidence retention, minority findings, failures, per-case regressions, tokens, and p95 latency before changing architecture. Bound any harness optimization (R06) with a held-out set. Newsletter-derived routing (R08) remains shadow-only; tool-transport/host-permission ideas (R09 and the older backlog lead) do not authorize external execution. Existing real-provider validation remains necessary.
+- A timeout result keeps the default attempt count, not an exact count of interrupted HTTP requests (the call ledger does record the abandoned request).
+- Each fallback provider gets its own timeout, so a stage with several fallbacks can take longer than one timeout.
+- Current account quotas, model availability and response quality need live testing with your own configuration.

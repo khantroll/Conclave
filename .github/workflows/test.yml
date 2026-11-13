@@ -8,17 +8,22 @@ on:
 jobs:
   python:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The README's minimum (3.11) and the version the acceptance runs use.
+        python-version: ["3.11", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
       - name: Install
         run: pip install -e ".[dev]"
       - name: Compile Python
         run: python -m compileall -q src
       - name: Lint Python
-        run: ruff check src tests
+        run: ruff check .
       - name: Check browser JavaScript syntax
         run: |
           node --check web/app.js
