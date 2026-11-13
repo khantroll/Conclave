@@ -117,6 +117,34 @@ def create_app(
         run_log_dir=run_log_dir or os.getenv("CONCLAVE_RUN_LOG_DIR", "run_logs"),
     )
 
+    store.mark_interrupted_runs()
+
+    async def _deliberate_and_store(
+        *,
+        request: DeliberationRequest,
+        workspace_id: str | None,
+        response: Response,
+    ) -> DeliberationResult:
+        # The row exists before any provider is called, and is updated after
+        # each stage, so a cancel or crash keeps every answer already paid for.
+        run = store.create_run(
+            question=request.question,
+            request=request,
+            workspace_id=workspace_id,
+        )
+        response.headers["X-Conclave-Run-ID"] = run.id
+
+        async def on_stage(partial: DeliberationResult) -> None:
+            store.update_run(run.id, partial, "running")
+
+        try:
+            result = await orchestrator.deliberate(request, on_stage=on_stage)
+        except BaseException:
+            store.mark_interrupted(run.id)
+            raise
+        store.update_run(run.id, result, "complete")
+        return result
+
     @app.get("/health")
     async def health() -> dict[str, str | int | bool]:
         configured_count = sum(1 for item in descriptors.values() if item.source == "configured")
@@ -191,14 +219,9 @@ def create_app(
         response: Response,
     ) -> DeliberationResult:
         _validate_quorum(request.minimum_successes, len(request.delegates))
-        result = await orchestrator.deliberate(request)
-        run = store.save_run(
-            question=request.question,
-            request=request,
-            result=result,
+        return await _deliberate_and_store(
+            request=request, workspace_id=None, response=response
         )
-        response.headers["X-Conclave-Run-ID"] = run.id
-        return result
 
     @app.post("/api/workspaces", response_model=Workspace, status_code=201)
     async def create_workspace(request: WorkspaceCreate) -> Workspace:
@@ -308,15 +331,9 @@ def create_app(
             critic_timeout_seconds=request.critic_timeout_seconds,
             arbiter_timeout_seconds=request.arbiter_timeout_seconds,
         )
-        result = await orchestrator.deliberate(deliberation)
-        run = store.save_run(
-            workspace_id=workspace.id,
-            question=request.question,
-            request=deliberation,
-            result=result,
+        return await _deliberate_and_store(
+            request=deliberation, workspace_id=workspace.id, response=response
         )
-        response.headers["X-Conclave-Run-ID"] = run.id
-        return result
 
     @app.post("/api/runs/{run_id}/delegates/{delegate_name}/retry", response_model=DeliberationRun)
     async def retry_delegate(run_id: str, delegate_name: str) -> DeliberationRun:

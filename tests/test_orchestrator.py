@@ -361,3 +361,61 @@ async def test_critic_and_arbiter_fallbacks_are_used():
     assert result.arbiter.name == "arbiter-fallback"
     assert result.arbiter.status == DelegateStatus.SUCCEEDED
     assert result.arbiter.raw_response == "fallback final"
+
+
+async def test_on_stage_reports_panel_critic_then_arbiter():
+    from conclave.models import DeliberationRequest
+
+    orchestrator = Orchestrator(
+        {
+            "a": FakeProvider("A"),
+            "b": FakeProvider("B"),
+            "critic": FakeProvider("C"),
+            "arbiter": FakeProvider("Z"),
+        }
+    )
+    seen = []
+
+    async def on_stage(result):
+        seen.append((result.critic is not None, result.arbiter is not None))
+
+    request = DeliberationRequest(
+        question="q",
+        delegates=["a", "b"],
+        critic="critic",
+        arbiter="arbiter",
+        minimum_successes=2,
+    )
+    final = await orchestrator.deliberate(request, on_stage=on_stage)
+    assert seen == [(False, False), (True, False), (True, True)]
+    assert final.arbiter is not None
+
+
+async def test_on_stage_without_critic_and_on_quorum_failure():
+    from conclave.models import DeliberationRequest
+
+    orchestrator = Orchestrator(
+        {
+            "a": FakeProvider("A"),
+            "bad": FakeProvider("", error=RuntimeError("boom")),
+            "arbiter": FakeProvider("Z"),
+        }
+    )
+    seen = []
+
+    async def on_stage(result):
+        seen.append(result.arbiter is not None)
+
+    no_critic = DeliberationRequest(
+        question="q", delegates=["a"], arbiter="arbiter", minimum_successes=1
+    )
+    await orchestrator.deliberate(no_critic, on_stage=on_stage)
+    assert seen == [False, True]
+
+    seen.clear()
+    short = DeliberationRequest(
+        question="q", delegates=["a", "bad"], arbiter="arbiter", minimum_successes=2
+    )
+    result = await orchestrator.deliberate(short, on_stage=on_stage)
+    assert seen == [False]
+    assert result.arbiter is None

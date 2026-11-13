@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
-
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -108,6 +107,10 @@ class DeliberationRun(BaseModel):
     request: DeliberationRequest | None = None
     result: DeliberationResult
     created_at: str
+    status: Literal["running", "complete", "interrupted"] = "complete"
+    updated_at: str | None = None
+    status: Literal["running", "complete", "interrupted"] = "complete"
+    updated_at: str | None = None
 
 
 class RequestComplexity(StrEnum):
