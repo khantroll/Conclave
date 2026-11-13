@@ -64,12 +64,20 @@
 
   // One card per delegate. Every model-derived field (answer, error, model name, prompt) is
   // escaped. `canRetry` is true when the run is saved, so a failed delegate can be retried.
-  function delegateCardsHtml(delegates, canRetry) {
+  function delegateCardsHtml(delegates, canRetry, labelMap) {
+    // Judges see answers only as "Response A", "Response B"...; show which delegate each was.
+    const labelOf = {};
+    Object.entries(labelMap || {}).forEach(([label, name]) => {
+      labelOf[name] = label;
+    });
     return delegates
       .map((d) => {
         const failed = d.status !== "succeeded";
         const body = d.raw_response || d.error || d.status;
         const meta = formatStageMeta(d);
+        const label = labelOf[d.name]
+          ? `<span class="judge-label">judges saw this as Response ${escapeHtml(labelOf[d.name])}</span>`
+          : "";
         const retry =
           failed && canRetry
             ? `<button class="secondary retry-delegate" data-name="${escapeHtml(d.name)}">Retry this delegate</button>`
@@ -80,6 +88,7 @@
         return `
       <article class="delegate ${failed ? "failed" : ""}">
         <strong>${escapeHtml(d.name)}</strong>
+        ${label}
         <div class="meta">${escapeHtml(meta)}</div>
         <pre>${escapeHtml(body)}</pre>
         ${prompt}
@@ -87,6 +96,15 @@
       </article>`;
       })
       .join("");
+  }
+
+  // Shown when the Critic or Arbiter is the same source as a delegate it judged. The judge itself
+  // is never told, since that would undo the blinding. Plain text; empty when there is no overlap.
+  function judgeOverlapNotice(result) {
+    const labels = (result && result.judge_overlaps) || [];
+    if (!labels.length) return "";
+    const list = labels.map((l) => `Response ${l}`).join(", ");
+    return `The Critic or Arbiter uses the same underlying source as ${list}, so it may have judged its own source's answer.`;
   }
 
   // The history list. `formatDate` is passed in so this stays free of locale and clock state.
@@ -129,6 +147,7 @@
     formatStageMeta,
     describeRefresh,
     delegateCardsHtml,
+    judgeOverlapNotice,
     historyHtml,
   };
 });

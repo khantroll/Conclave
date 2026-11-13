@@ -174,7 +174,8 @@ summary { cursor: pointer; font-weight: 700; }
 .provider-notice.warning {
   color: #ffd2a8;
 }
-#singleSourceBanner {
+#singleSourceBanner,
+#judgeOverlapNotice {
   margin: .4rem 0;
   padding: .5rem .7rem;
   border: 1px solid #8a5a2b;
@@ -220,4 +221,9 @@ summary { cursor: pointer; font-weight: 700; }
 }
 .provider-status.error {
   color: #ffb9b9;
+}
+.judge-label {
+  margin-left: .5rem;
+  font-size: .78rem;
+  color: #9fb0c8;
 }

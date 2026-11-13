@@ -148,6 +148,8 @@ Everything a model returns is treated as data. It is wrapped in per-run markers 
 
 What this shows is that Conclave grants model text **no authority**. It does **not** show that a real judge model ignores persuasion: a judge may still be swayed by a convincing lie placed inside its own marked block. That is a property of the model, not of this code, and it is measured separately (roadmap item P1-13). Add a hostile text by appending an entry to `tests/adversarial/corpus.json`; no code change is needed.
 
+**Blind judging.** The Critic and Arbiter see answers as `Response A`, `Response B`... in an order permuted by the run seed, with no provider name, model name, latency, cost or error text. The mapping is saved and shown in the console, and if a judge is the same source as a delegate the console says so (`judge_overlaps`) without telling the judge. Limitation: answer text can still name its author, and raw text is never edited, so this hides configuration, not writing style.
+
 ## Likely architecture
 
 The current direction is intentionally provisional.

@@ -517,8 +517,11 @@ async def test_different_models_are_two_sources_and_judges_are_told_which_share_
     result = await orchestrator.deliberate(_request(["a", "b", "c"]))
     assert result.panel.independent_source_count == 2
     assert result.panel.synthesizeable is True
+    # Labels are a seeded permutation, so find which two labels a and c were given.
+    by_name = {name: label for label, name in result.label_map.items()}
+    first, second = sorted([by_name["a"], by_name["c"]])
     for prompt in (result.critic.prompt, result.arbiter.prompt):
-        assert "Responses A and C come from the same underlying source" in prompt
+        assert f"Responses {first} and {second} come from the same underlying source" in prompt
         assert "not independent corroboration" in prompt
 
 

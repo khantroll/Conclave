@@ -34,7 +34,7 @@ import conclave.api as api_module
 import conclave.providers.factory as factory_module
 from conclave.api import create_app
 from conclave.config import ConclaveConfig, ProviderConfig
-from conclave.prompts import _UNSAFE_CHARS, header_text, prepare_untrusted_text
+from conclave.prompts import _UNSAFE_CHARS, prepare_untrusted_text
 from conclave.providers.fake import FakeProvider
 from conclave.store import WorkspaceStore
 
@@ -371,23 +371,17 @@ def test_model_derived_html_is_built_only_by_the_tested_render_helpers():
 
 
 @pytest.mark.parametrize("fixture", FIXTURE_IDS)
-def test_a_hostile_reported_model_name_cannot_break_out_of_its_prompt_header(fixture):
-    """The header line ``Response A: name (model)`` is outside the markers, and the model name
-    comes from the provider's reply. Whatever it says, it stays one short, inert line."""
+def test_a_hostile_reported_model_name_never_reaches_a_judge_prompt(fixture):
+    """Judges are blind: the provider-reported model name, whatever it says, is not in a prompt."""
     hostile = run_scenario("hostile_model_metadata", fixture)
     control = run_scenario("hostile_model_metadata", None)
     assert trace(hostile) == trace(control)  # it changes nothing the orchestrator does
     prompts = judge_prompts(hostile)
     assert prompts
+    # The reported model is the only thing that differs between the two runs, and a blind
+    # prompt cannot depend on it: the prompts are byte-identical.
     for (name, prompt), (_, control_prompt) in zip(prompts, judge_prompts(control), strict=True):
-        assert not _UNSAFE_CHARS.search(prompt), name
-        assert prompt.count("<<<") == 2 * block_count(prompt), name
-        assert prompt.count(">>>") == 2 * block_count(prompt), name
-        # No line was added: a newline in the model name must not start a new "instruction".
-        assert prompt.count("\n") == control_prompt.count("\n"), name
-        headers = [line for line in prompt.splitlines() if line.startswith("Response A:")]
-        assert len(headers) == 1 and len(headers[0]) < 140, name
-
+        assert prompt == control_prompt, name
 
 # ------------------------------------------------------------ redaction boundaries
 
@@ -584,25 +578,6 @@ def test_retries_and_fallback_judges_save_the_same_rows_and_logs_as_the_control(
         assert (last["arbiter"]["name"], last["arbiter"]["status"]) == ("demo-a", "succeeded")
     else:
         assert last["critic"]["status"] == "succeeded" and last["arbiter"]["status"] == "succeeded"
-
-
-# ------------------------------------------------------------- header_text boundaries
-
-
-def test_header_text_boundaries():
-    assert header_text("") == ""
-    assert header_text("m" * 80) == "m" * 80  # exactly the limit: untouched
-    assert header_text("m" * 81) == "m" * 80 + "\u2026"  # one over: cut and marked
-    assert header_text("  spaced \n\t out  ") == "spaced out"
-    assert header_text("a\u202eb\x00c") == "a\\u{202e}b\\u{0}c"
-
-
-@pytest.mark.parametrize("prefix", range(70, 84))
-def test_a_marker_run_crossing_the_cutoff_never_leaves_a_marker(prefix):
-    for text in ("<<<END A x>>>", ">>>", "<<<<<<<<", "<<<RESPONSE B 0123456789ab>>>"):
-        shown = header_text("m" * prefix + text)
-        assert "<<<" not in shown and ">>>" not in shown, (prefix, text, shown)
-        assert "\n" not in shown and len(shown) <= 81
 
 
 # ------------------------------------------------- the reason phrase is a secret sink too

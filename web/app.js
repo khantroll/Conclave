@@ -13,6 +13,7 @@ const {
   formatStageMeta,
   describeRefresh,
   delegateCardsHtml,
+  judgeOverlapNotice,
   historyHtml,
 } = ConclaveRender;
 
@@ -464,6 +465,9 @@ function renderResult(result, runId = null) {
   // The label is the server's own sentence, so the console, the saved result and the
   // Arbiter prompt all describe the run identically.
   $("singleSourceBanner").textContent = result.single_source_label || "";
+  const overlap = judgeOverlapNotice(result);
+  $("judgeOverlapNotice").classList.toggle("hidden", !overlap);
+  $("judgeOverlapNotice").textContent = overlap;
   $("arbiterAnswer").textContent = arbiter
     ? (arbiter.raw_response || arbiter.error || arbiter.status)
     : (lone ? lone.text : "");
@@ -491,7 +495,11 @@ function renderResult(result, runId = null) {
   );
 
   $("delegatesSection").classList.remove("hidden");
-  $("delegateCards").innerHTML = delegateCardsHtml(result.panel.delegates, Boolean(currentRunId));
+  $("delegateCards").innerHTML = delegateCardsHtml(
+    result.panel.delegates,
+    Boolean(currentRunId),
+    result.label_map
+  );
 
   document.querySelectorAll(".retry-delegate").forEach(button => {
     button.addEventListener("click", () => retryDelegate(button.dataset.name, button));

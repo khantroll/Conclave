@@ -122,3 +122,27 @@ test("describeRefresh reads the returned result, never assumes success", () => {
   assert.equal(render.describeRefresh(result(), "arbiter"), "Arbiter refreshed; the panel and Critic were kept");
   assert.equal(render.describeRefresh(result(), "critic"), "Critic and Arbiter refreshed");
 });
+
+test("a delegate card says which blind label the judges saw it as", () => {
+  const card = (labelMap) =>
+    render.delegateCardsHtml([{ name: "alpha", status: "succeeded", raw_response: "hi" }], false, labelMap);
+  assert.match(card({ B: "alpha", A: "beta" }), /judges saw this as Response B/);
+  assert.doesNotMatch(card({}), /judges saw/);
+  assert.doesNotMatch(card(undefined), /judges saw/);
+});
+
+test("a label map cannot inject markup through a label or a delegate name", () => {
+  const html = render.delegateCardsHtml(
+    [{ name: `<b onclick="x">`, status: "succeeded", raw_response: "hi" }],
+    false,
+    { '<img src=x onerror=1>': `<b onclick="x">` }
+  );
+  assert.doesNotMatch(html, /<img|<b /);
+});
+
+test("the judge-overlap notice names the labels, and is empty without an overlap", () => {
+  assert.equal(render.judgeOverlapNotice({ judge_overlaps: [] }), "");
+  assert.equal(render.judgeOverlapNotice({}), "");
+  assert.equal(render.judgeOverlapNotice(null), "");
+  assert.match(render.judgeOverlapNotice({ judge_overlaps: ["A", "C"] }), /Response A, Response C/);
+});

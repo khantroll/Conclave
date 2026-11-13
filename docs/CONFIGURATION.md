@@ -245,6 +245,12 @@ Only do this on a network you trust. `extra_headers` in `conclave.json` can hold
 
 Provider error bodies and transport errors are saved with the run, and some providers echo the credential they rejected. Before an error is stored or returned, Conclave replaces these values with `[redacted]`: the provider's API key (always, whatever its length), and every `extra_headers` value whose header name contains `auth`, `key`, `token`, `secret`, `cookie`, `password` or `credential`, or whose value is at least 8 characters. A short value under a harmless-looking header name (for example `X-Feature: true`) is left alone, because redacting it would garble ordinary text; put anything secret under a header name that says so, or make it at least 8 characters. Model *responses* are never altered: they are stored exactly as received.
 
-### Provider-reported metadata
+### Blind judging
 
-The model name a provider reports comes from its reply, so it is untrusted too. In the Critic and Arbiter prompts it appears on the `Response A: name (model)` line outside the response markers, where it is reduced to one short line: control, bidirectional and zero-width characters are shown as visible escapes, whitespace (including newlines) is collapsed, marker sequences are broken up, and it is cut at 80 characters. The stored result keeps the model name unchanged.
+The Critic and Arbiter see each delegate answer only as `Response A`, `Response B` and so on. Their prompts carry no provider name, model name (configured or provider-reported), latency, token count, cost, attempt count or error text, so a hostile or merely vain model name cannot reach a judge and a judge cannot weight by reputation. Failed slots are described by position and kind only (`Slot 2 did not answer: failed.`).
+
+The labels are a permutation of the successful answers derived from the run seed, so the order differs between runs and never follows the workspace order. Every retry in a chain reuses the stored seed, so the order is the same; the permutation covers every delegate in the request, so a delegate keeps its label whoever else answers (a failed delegate leaves its letter unused, and a successful retry fills it without relabelling anyone). Source groups are given by label (`Responses A and C come from the same underlying source...`).
+
+The label-to-delegate mapping is stored on the result as `label_map`, and the console shows next to each delegate which response label the judges saw. When the Critic or Arbiter is the same source as a delegate (the same configured endpoint and model, or the same reported model), the result records those labels as `judge_overlaps` and the console shows a notice. The judge is not told which response is its own, since that would undo the blinding.
+
+Limit: an answer can still identify its author ("As an OpenAI model..."). Raw text is never edited, so blinding hides the configuration, not the writing.
