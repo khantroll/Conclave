@@ -108,9 +108,44 @@ class Orchestrator:
     def provider_names(self) -> list[str]:
         return sorted(self._providers)
 
-    async def run_panel(self, request: PanelRequest) -> PanelResult:
-        tasks = [self._run_delegate(delegate) for delegate in request.delegates]
-        results = await asyncio.gather(*tasks)
+    async def run_panel(
+        self,
+        request: PanelRequest,
+        *,
+        on_interrupt: Callable[[list[DelegateResult]], Awaitable[None]] | None = None,
+    ) -> PanelResult:
+        """Run the delegates concurrently.
+
+        If the run is cancelled (or fails) part-way, every delegate that had already answered
+        keeps its result: ``on_interrupt`` is awaited with one result per delegate, in order,
+        where a delegate that had not finished is recorded as cancelled. What was paid for is
+        never lost.
+        """
+        tasks = [
+            asyncio.ensure_future(self._run_delegate(delegate)) for delegate in request.delegates
+        ]
+        try:
+            results = await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            # Let the cancelled calls write their ledger rows before anything else happens.
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if on_interrupt is not None:
+                kept = [
+                    task.result()
+                    if task.done() and not task.cancelled() and task.exception() is None
+                    else DelegateResult(
+                        name=delegate.name,
+                        status=DelegateStatus.FAILED,
+                        prompt=delegate.prompt,
+                        error="Cancelled before this delegate answered",
+                        error_kind="cancelled",
+                    )
+                    for delegate, task in zip(request.delegates, tasks, strict=True)
+                ]
+                await on_interrupt(kept)
+            raise
         return self._panel_result(
             question=request.question,
             delegates=list(results),
@@ -276,7 +311,17 @@ class Orchestrator:
             minimum_successes=request.minimum_successes,
             allow_single_source=request.allow_single_source,
         )
-        panel = await self.run_panel(panel_request)
+        async def keep_partial_panel(kept: list[DelegateResult]) -> None:
+            if on_stage is not None:
+                partial = self._panel_result(
+                    question=request.question,
+                    delegates=kept,
+                    minimum_successes=request.minimum_successes,
+                    allow_single_source=request.allow_single_source,
+                )
+                await on_stage(self._result(partial, seed=request.seed))
+
+        panel = await self.run_panel(panel_request, on_interrupt=keep_partial_panel)
 
         after_panel = self._result(panel, seed=request.seed)
         if on_stage is not None:
