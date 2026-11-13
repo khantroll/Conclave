@@ -1,19 +1,22 @@
 from fastapi.testclient import TestClient
 
-from conclave.api import app, create_app
+from conclave.api import create_app
+from conclave.config import ConclaveConfig
 from conclave.store import WorkspaceStore
 
-client = TestClient(app)
+
+def make_app(store: WorkspaceStore):
+    return create_app(config=ConclaveConfig(), workspace_store=store)
 
 
-def test_web_console_is_served():
+def test_web_console_is_served(client):
     response = client.get("/")
     assert response.status_code == 200
     assert "Conclave" in response.text
     assert "/static/app.js" in response.text
 
 
-def test_health():
+def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
@@ -24,7 +27,7 @@ def test_health():
     assert body["demo_only"] is True
 
 
-def test_request_analysis_recommends_panel_for_complex_question():
+def test_request_analysis_recommends_panel_for_complex_question(client):
     response = client.post(
         "/api/analyze",
         json={
@@ -40,7 +43,7 @@ def test_request_analysis_recommends_panel_for_complex_question():
     assert body["complexity"] in {"complex", "deep"}
 
 
-def test_provider_connection_test():
+def test_provider_connection_test(client):
     response = client.post("/api/providers/demo-a/test")
     assert response.status_code == 200
     body = response.json()
@@ -48,18 +51,18 @@ def test_provider_connection_test():
     assert body["model"] == "fake-model"
 
 
-def test_all_configured_providers_endpoint():
+def test_all_configured_providers_endpoint(client):
     response = client.post("/api/providers/test-all")
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_unknown_provider_connection_test_is_404():
+def test_unknown_provider_connection_test_is_404(client):
     response = client.post("/api/providers/not-real/test")
     assert response.status_code == 404
 
 
-def test_provider_names():
+def test_provider_names(client):
     response = client.get("/api/providers")
     assert response.status_code == 200
     providers = response.json()["providers"]
@@ -72,7 +75,7 @@ def test_provider_names():
     assert "critical" in descriptors["demo-b"]["capabilities"]
 
 
-def test_demo_deliberation_runs_panel_critic_and_arbiter():
+def test_demo_deliberation_runs_panel_critic_and_arbiter(client):
     response = client.post(
         "/api/deliberate",
         json={
@@ -99,7 +102,7 @@ def test_demo_deliberation_runs_panel_critic_and_arbiter():
     assert response.headers["X-Conclave-Run-ID"]
 
 
-def test_deliberation_skips_critic_and_arbiter_without_quorum():
+def test_deliberation_skips_critic_and_arbiter_without_quorum(client):
     response = client.post(
         "/api/deliberate",
         json={
@@ -120,7 +123,7 @@ def test_deliberation_skips_critic_and_arbiter_without_quorum():
 
 def test_workspace_persists_defaults_run_and_history(tmp_path):
     store = WorkspaceStore(tmp_path / "test.db")
-    workspace_app = create_app(workspace_store=store)
+    workspace_app = make_app(store)
     workspace_client = TestClient(workspace_app)
 
     created = workspace_client.post(
@@ -180,7 +183,7 @@ def test_workspace_persists_defaults_run_and_history(tmp_path):
 
 def test_auto_select_workspace_uses_smaller_panel_for_simple_question(tmp_path):
     store = WorkspaceStore(tmp_path / "auto-select.db")
-    workspace_app = create_app(workspace_store=store)
+    workspace_app = make_app(store)
     workspace_client = TestClient(workspace_app)
 
     created = workspace_client.post(
@@ -219,7 +222,7 @@ def test_auto_select_workspace_uses_smaller_panel_for_simple_question(tmp_path):
 
 def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_path):
     store = WorkspaceStore(tmp_path / "crud.db")
-    workspace_app = create_app(workspace_store=store)
+    workspace_app = make_app(store)
     workspace_client = TestClient(workspace_app)
 
     bad = workspace_client.post(
@@ -269,7 +272,7 @@ def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_pat
 
 def test_downstream_retry_endpoints_save_new_runs(tmp_path):
     store = WorkspaceStore(tmp_path / "downstream-retry.db")
-    workspace_app = create_app(workspace_store=store)
+    workspace_app = make_app(store)
     workspace_client = TestClient(workspace_app)
 
     workspace = workspace_client.post(
@@ -306,7 +309,7 @@ def test_downstream_retry_endpoints_save_new_runs(tmp_path):
 
 def test_deleted_workspace_run_remains_in_global_history(tmp_path):
     store = WorkspaceStore(tmp_path / "detached-history.db")
-    workspace_app = create_app(workspace_store=store)
+    workspace_app = make_app(store)
     workspace_client = TestClient(workspace_app)
 
     workspace = workspace_client.post(
@@ -336,7 +339,7 @@ def test_deleted_workspace_run_remains_in_global_history(tmp_path):
 
 def test_workspace_validation_rejects_duplicate_delegates_and_unknown_roles(tmp_path):
     store = WorkspaceStore(tmp_path / "validation.db")
-    workspace_app = create_app(workspace_store=store)
+    workspace_app = make_app(store)
     workspace_client = TestClient(workspace_app)
 
     duplicate = workspace_client.post(
@@ -365,7 +368,7 @@ def test_workspace_validation_rejects_duplicate_delegates_and_unknown_roles(tmp_
 
 def test_workspace_rejects_invalid_stage_fallbacks(tmp_path):
     store = WorkspaceStore(tmp_path / "fallback-validation.db")
-    workspace_app = create_app(workspace_store=store)
+    workspace_app = make_app(store)
     workspace_client = TestClient(workspace_app)
 
     duplicate_primary = workspace_client.post(
