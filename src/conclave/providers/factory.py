@@ -6,6 +6,16 @@ from ..config import ProviderConfig, read_api_key
 from .base import Provider
 from .openai_compatible import OpenAICompatibleProvider
 from .unavailable import UnavailableProvider
+from ..sources import ProviderIdentity
+
+
+def build_identities(configs: Iterable[ProviderConfig]) -> dict[str, ProviderIdentity]:
+    return {
+        config.name: ProviderIdentity(
+            base_url=config.base_url, model=config.model, router_alias=config.router_alias
+        )
+        for config in configs
+    }
 
 
 def build_providers(configs: Iterable[ProviderConfig]) -> dict[str, Provider]:

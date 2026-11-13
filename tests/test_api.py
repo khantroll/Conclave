@@ -102,12 +102,21 @@ def test_demo_deliberation_runs_panel_critic_and_arbiter(client):
     assert response.headers["X-Conclave-Run-ID"]
 
 
-def test_deliberation_skips_critic_and_arbiter_without_quorum(client):
+def test_deliberation_skips_critic_and_arbiter_without_quorum(tmp_path, monkeypatch):
+    import conclave.api as api_module
+    from conclave.providers.fake import FakeProvider
+
+    def make(response="ok", **kwargs):
+        error = RuntimeError("provider down") if response == "Delegate B response" else None
+        return FakeProvider(response, error=error, **kwargs)
+
+    monkeypatch.setattr(api_module, "FakeProvider", make)
+    client = TestClient(make_app(WorkspaceStore(tmp_path / "t.db")))
     response = client.post(
         "/api/deliberate",
         json={
             "question": "test",
-            "delegates": ["missing-provider", "demo-a"],
+            "delegates": ["demo-a", "demo-b"],
             "critic": "demo-critic",
             "arbiter": "demo-arbiter",
             "minimum_successes": 2,
@@ -597,3 +606,90 @@ def test_huge_answer_is_capped_in_judge_prompt_but_stored_whole(tmp_path, monkey
     assert len(stored.raw_response) == 1_000_000
     assert len(run.result.critic.prompt) < 60_000
     assert "[truncated: 976000 characters omitted]" in run.result.critic.prompt
+
+
+# --- validation and warnings (P0-6) ---
+
+
+def _post(client, path, body, expected):
+    response = client.post(path, json=body)
+    assert response.status_code == expected, (path, body, response.text)
+    return response
+
+
+def test_direct_endpoints_reject_duplicate_and_unknown_names(tmp_path):
+    client = TestClient(make_app(WorkspaceStore(tmp_path / "t.db")))
+    base = {"question": "q", "arbiter": "demo-arbiter"}
+
+    dup = _post(client, "/api/deliberate", {**base, "delegates": ["demo-a", "demo-a"]}, 422)
+    assert "unique" in dup.json()["detail"]
+    _post(client, "/api/deliberate", {**base, "delegates": ["demo-a", "nope"]}, 422)
+    _post(client, "/api/deliberate", {"question": "q", "delegates": ["demo-a"], "arbiter": "nope"}, 422)
+    _post(
+        client,
+        "/api/deliberate",
+        {**base, "delegates": ["demo-a"], "critic": "demo-critic", "critic_fallbacks": ["demo-critic"]},
+        422,
+    )
+    _post(
+        client,
+        "/api/deliberate",
+        {**base, "delegates": ["demo-a"], "roles": {"demo-b": "not a delegate"}},
+        422,
+    )
+    # Nothing was stored for a rejected request.
+    assert client.get("/api/runs").json() == []
+
+    panel = {"question": "q", "minimum_successes": 1}
+    names = [{"name": "demo-a", "prompt": "p"}, {"name": "demo-a", "prompt": "p"}]
+    _post(client, "/api/panel", {**panel, "delegates": names}, 422)
+    _post(client, "/api/panel", {**panel, "delegates": [{"name": "nope", "prompt": "p"}]}, 422)
+    ok = _post(client, "/api/panel", {**panel, "delegates": [{"name": "demo-a", "prompt": "p"}]}, 200)
+    assert ok.json()["independent_source_count"] == 1
+
+
+def test_panel_response_reports_independent_sources_for_demo_providers(client):
+    body = {
+        "question": "q",
+        "delegates": [{"name": "demo-a", "prompt": "p"}, {"name": "demo-b", "prompt": "p"}],
+        "minimum_successes": 2,
+    }
+    result = client.post("/api/panel", json=body).json()
+    assert result["successful_count"] == 2
+    assert result["independent_source_count"] == 2
+    assert result["synthesizeable"] is True
+
+
+def test_workspace_with_two_delegates_of_one_config_saves_with_a_warning(tmp_path):
+    from conclave.config import ProviderConfig
+
+    def provider(name, model, url="https://api.example.com/v1"):
+        return ProviderConfig(name=name, base_url=url, model=model)
+
+    config = ConclaveConfig(
+        providers=[
+            provider("one", "m1"),
+            provider("two", "m1", "HTTPS://API.EXAMPLE.COM/v1/"),
+            provider("three", "m2"),
+        ]
+    )
+    store = WorkspaceStore(tmp_path / "t.db")
+    client = TestClient(create_app(config=config, workspace_store=store))
+    body = {
+        "name": "w",
+        "delegates": ["one", "two", "three"],
+        "arbiter": "demo-arbiter",
+        "minimum_successes": 2,
+    }
+    created = _post(client, "/api/workspaces", body, 201).json()
+    assert len(created["warnings"]) == 1
+    assert "one, two" in created["warnings"][0] and "one source" in created["warnings"][0]
+    # The warning is advice, not data: reading the workspace back stores none.
+    assert client.get(f"/api/workspaces/{created['id']}").json()["warnings"] == []
+
+    replaced = client.put(
+        f"/api/workspaces/{created['id']}", json={**body, "delegates": ["one", "three"]}
+    ).json()
+    assert replaced["warnings"] == []
+    clean = _post(client, "/api/workspaces", {**body, "name": "w2", "delegates": ["one", "three"]}, 201)
+    assert clean.json()["warnings"] == []

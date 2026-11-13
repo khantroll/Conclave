@@ -15,6 +15,7 @@ from .models import (
 )
 from .prompts import build_arbiter_prompt, build_critic_prompt, build_delegate_prompt
 from .providers.base import Provider, ProviderError
+from .sources import ProviderIdentity, group_sources
 
 
 StageCallback = Callable[[DeliberationResult], Awaitable[None]]
@@ -23,8 +24,35 @@ StageCallback = Callable[[DeliberationResult], Awaitable[None]]
 class Orchestrator:
     """Run independent delegates concurrently and preserve partial success."""
 
-    def __init__(self, providers: Mapping[str, Provider]) -> None:
+    def __init__(
+        self,
+        providers: Mapping[str, Provider],
+        identities: Mapping[str, ProviderIdentity] | None = None,
+    ) -> None:
         self._providers = dict(providers)
+        # Providers without an identity (demo and test providers) are never merged
+        # into one source.
+        self._identities = dict(identities or {})
+
+    def _panel_result(
+        self,
+        *,
+        question: str,
+        delegates: list[DelegateResult],
+        minimum_successes: int,
+    ) -> PanelResult:
+        """Count real answers, and independent sources, for a set of delegate results."""
+        successful_count = sum(r.status == DelegateStatus.SUCCEEDED for r in delegates)
+        sources = group_sources(delegates, self._identities)
+        return PanelResult(
+            question=question,
+            delegates=delegates,
+            successful_count=successful_count,
+            failed_count=len(delegates) - successful_count,
+            synthesizeable=len(sources) >= minimum_successes,
+            independent_source_count=len(sources),
+            sources=sources,
+        )
 
     @property
     def provider_names(self) -> list[str]:
@@ -33,16 +61,10 @@ class Orchestrator:
     async def run_panel(self, request: PanelRequest) -> PanelResult:
         tasks = [self._run_delegate(delegate) for delegate in request.delegates]
         results = await asyncio.gather(*tasks)
-
-        successful_count = sum(r.status == DelegateStatus.SUCCEEDED for r in results)
-        failed_count = len(results) - successful_count
-
-        return PanelResult(
+        return self._panel_result(
             question=request.question,
-            delegates=results,
-            successful_count=successful_count,
-            failed_count=failed_count,
-            synthesizeable=successful_count >= request.minimum_successes,
+            delegates=list(results),
+            minimum_successes=request.minimum_successes,
         )
 
     async def test_provider(self, name: str, *, timeout_seconds: float = 20.0) -> DelegateResult:
@@ -103,6 +125,7 @@ class Orchestrator:
                 prompt=build_critic_prompt(
                     seed=request.seed,
                     response_char_limit=request.judge_response_char_limit,
+                    source_groups=panel.sources,
                     question=request.question,
                     delegate_results=panel.delegates,
                     workspace_context=request.workspace_context,
@@ -121,6 +144,7 @@ class Orchestrator:
         arbiter_prompt = build_arbiter_prompt(
             seed=request.seed,
             response_char_limit=request.judge_response_char_limit,
+            source_groups=panel.sources,
             question=request.question,
             delegate_results=panel.delegates,
             workspace_context=request.workspace_context,
@@ -168,15 +192,10 @@ class Orchestrator:
             retry if result.name == delegate_name else result
             for result in prior_result.panel.delegates
         ]
-        successful_count = sum(
-            result.status == DelegateStatus.SUCCEEDED for result in delegates
-        )
-        panel = PanelResult(
+        panel = self._panel_result(
             question=request.question,
             delegates=delegates,
-            successful_count=successful_count,
-            failed_count=len(delegates) - successful_count,
-            synthesizeable=successful_count >= request.minimum_successes,
+            minimum_successes=request.minimum_successes,
         )
 
         if not panel.synthesizeable:
@@ -193,6 +212,7 @@ class Orchestrator:
                 prompt=build_critic_prompt(
                     seed=request.seed,
                     response_char_limit=request.judge_response_char_limit,
+                    source_groups=panel.sources,
                     question=request.question,
                     delegate_results=panel.delegates,
                     workspace_context=request.workspace_context,
@@ -206,6 +226,7 @@ class Orchestrator:
             prompt=build_arbiter_prompt(
                 seed=request.seed,
                 response_char_limit=request.judge_response_char_limit,
+                source_groups=panel.sources,
                 question=request.question,
                 delegate_results=panel.delegates,
                 workspace_context=request.workspace_context,
@@ -237,6 +258,7 @@ class Orchestrator:
             prompt=build_critic_prompt(
                 seed=request.seed,
                 response_char_limit=request.judge_response_char_limit,
+                source_groups=prior_result.panel.sources,
                 question=request.question,
                 delegate_results=prior_result.panel.delegates,
                 workspace_context=request.workspace_context,
@@ -249,6 +271,7 @@ class Orchestrator:
             prompt=build_arbiter_prompt(
                 seed=request.seed,
                 response_char_limit=request.judge_response_char_limit,
+                source_groups=prior_result.panel.sources,
                 question=request.question,
                 delegate_results=prior_result.panel.delegates,
                 workspace_context=request.workspace_context,
@@ -280,6 +303,7 @@ class Orchestrator:
             prompt=build_arbiter_prompt(
                 seed=request.seed,
                 response_char_limit=request.judge_response_char_limit,
+                source_groups=prior_result.panel.sources,
                 question=request.question,
                 delegate_results=prior_result.panel.delegates,
                 workspace_context=request.workspace_context,
@@ -354,6 +378,21 @@ class Orchestrator:
                 prompt=delegate.prompt,
                 error=message,
                 attempts=exc.attempts if isinstance(exc, ProviderError) else 1,
+                latency_ms=_elapsed_ms(started),
+            )
+
+        if not response.text.strip():
+            return DelegateResult(
+                name=delegate.name,
+                status=DelegateStatus.FAILED,
+                prompt=delegate.prompt,
+                raw_response=response.text,
+                model=response.model,
+                usage=response.usage,
+                estimated_cost_usd=response.estimated_cost_usd,
+                error="Provider returned an empty response",
+                error_kind="empty_response",
+                attempts=response.attempts,
                 latency_ms=_elapsed_ms(started),
             )
 

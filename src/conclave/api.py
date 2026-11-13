@@ -29,9 +29,10 @@ from .models import (
 )
 from .orchestrator import Orchestrator
 from .providers.fake import FakeProvider
-from .providers.factory import build_providers
+from .providers.factory import build_identities, build_providers
 from .security import LoopbackGuardMiddleware
 from .selection import select_delegates
+from .sources import sharing_config
 from .store import WorkspaceStore
 
 
@@ -118,7 +119,15 @@ def create_app(
             for item in config.providers
         },
     }
-    orchestrator = Orchestrator(providers)
+    identities = build_identities(config.providers)
+    orchestrator = Orchestrator(providers, identities)
+
+    def workspace_warnings(delegates: list[str]) -> list[str]:
+        return [
+            f"{', '.join(group)} use the same base URL and model, so they will count as "
+            "one source, not as corroboration."
+            for group in sharing_config(delegates, identities)
+        ]
     store = workspace_store or WorkspaceStore(
         os.getenv("CONCLAVE_DB_PATH", "conclave.db"),
         run_log_dir=run_log_dir or os.getenv("CONCLAVE_RUN_LOG_DIR", "run_logs"),
@@ -220,6 +229,15 @@ def create_app(
     @app.post("/api/panel", response_model=PanelResult)
     async def run_panel(request: PanelRequest) -> PanelResult:
         _validate_quorum(request.minimum_successes, len(request.delegates))
+        _validate_participants(
+            delegates=[delegate.name for delegate in request.delegates],
+            roles={},
+            critic=None,
+            critic_fallbacks=[],
+            arbiter=None,
+            arbiter_fallbacks=[],
+            provider_names=orchestrator.provider_names,
+        )
         return await orchestrator.run_panel(request)
 
     @app.post("/api/deliberate", response_model=DeliberationResult)
@@ -228,6 +246,15 @@ def create_app(
         response: Response,
     ) -> DeliberationResult:
         _validate_quorum(request.minimum_successes, len(request.delegates))
+        _validate_participants(
+            delegates=request.delegates,
+            roles=request.roles,
+            critic=request.critic,
+            critic_fallbacks=request.critic_fallbacks,
+            arbiter=request.arbiter,
+            arbiter_fallbacks=request.arbiter_fallbacks,
+            provider_names=orchestrator.provider_names,
+        )
         return await _deliberate_and_store(
             request=request, workspace_id=None, response=response
         )
@@ -235,7 +262,9 @@ def create_app(
     @app.post("/api/workspaces", response_model=Workspace, status_code=201)
     async def create_workspace(request: WorkspaceCreate) -> Workspace:
         _validate_workspace(request, orchestrator.provider_names)
-        return store.create(request)
+        return store.create(request).model_copy(
+            update={"warnings": workspace_warnings(request.delegates)}
+        )
 
     @app.get("/api/workspaces", response_model=list[Workspace])
     async def list_workspaces() -> list[Workspace]:
@@ -257,7 +286,7 @@ def create_app(
         workspace = store.replace(workspace_id, request)
         if workspace is None:
             raise HTTPException(status_code=404, detail="Workspace not found")
-        return workspace
+        return workspace.model_copy(update={"warnings": workspace_warnings(request.delegates)})
 
     @app.delete("/api/workspaces/{workspace_id}", status_code=204)
     async def delete_workspace(workspace_id: str) -> Response:
@@ -433,9 +462,31 @@ def _seeded(request: DeliberationRequest) -> DeliberationRequest:
 
 def _validate_workspace(request: WorkspaceCreate, provider_names: list[str]) -> None:
     _validate_quorum(request.minimum_successes, len(request.delegates))
-    if len(set(request.delegates)) != len(request.delegates):
+    _validate_participants(
+        delegates=request.delegates,
+        roles=request.roles,
+        critic=request.critic,
+        critic_fallbacks=request.critic_fallbacks,
+        arbiter=request.arbiter,
+        arbiter_fallbacks=request.arbiter_fallbacks,
+        provider_names=provider_names,
+    )
+
+
+def _validate_participants(
+    *,
+    delegates: list[str],
+    roles: dict[str, str],
+    critic: str | None,
+    critic_fallbacks: list[str],
+    arbiter: str | None,
+    arbiter_fallbacks: list[str],
+    provider_names: list[str],
+) -> None:
+    """Names must be unique and known, and fallbacks must not repeat their primary."""
+    if len(set(delegates)) != len(delegates):
         raise HTTPException(status_code=422, detail="Delegates must be unique")
-    unknown_roles = sorted(set(request.roles) - set(request.delegates))
+    unknown_roles = sorted(set(roles) - set(delegates))
     if unknown_roles:
         names = ", ".join(unknown_roles)
         raise HTTPException(
@@ -443,20 +494,24 @@ def _validate_workspace(request: WorkspaceCreate, provider_names: list[str]) -> 
             detail=f"Role configured for non-delegate provider(s): {names}",
         )
     known = set(provider_names)
-    missing = [name for name in request.delegates if name not in known]
-    if request.critic and request.critic not in known:
-        missing.append(request.critic)
-    missing.extend(name for name in request.critic_fallbacks if name not in known)
-    if request.arbiter not in known:
-        missing.append(request.arbiter)
-    missing.extend(name for name in request.arbiter_fallbacks if name not in known)
-    if request.critic and request.critic in request.critic_fallbacks:
-        raise HTTPException(status_code=422, detail="Critic fallback list must not repeat the primary Critic")
-    if request.arbiter in request.arbiter_fallbacks:
-        raise HTTPException(status_code=422, detail="Arbiter fallback list must not repeat the primary Arbiter")
-    if len(set(request.critic_fallbacks)) != len(request.critic_fallbacks):
+    missing = [name for name in delegates if name not in known]
+    if critic and critic not in known:
+        missing.append(critic)
+    missing.extend(name for name in critic_fallbacks if name not in known)
+    if arbiter and arbiter not in known:
+        missing.append(arbiter)
+    missing.extend(name for name in arbiter_fallbacks if name not in known)
+    if critic and critic in critic_fallbacks:
+        raise HTTPException(
+            status_code=422, detail="Critic fallback list must not repeat the primary Critic"
+        )
+    if arbiter and arbiter in arbiter_fallbacks:
+        raise HTTPException(
+            status_code=422, detail="Arbiter fallback list must not repeat the primary Arbiter"
+        )
+    if len(set(critic_fallbacks)) != len(critic_fallbacks):
         raise HTTPException(status_code=422, detail="Critic fallback providers must be unique")
-    if len(set(request.arbiter_fallbacks)) != len(request.arbiter_fallbacks):
+    if len(set(arbiter_fallbacks)) != len(arbiter_fallbacks):
         raise HTTPException(status_code=422, detail="Arbiter fallback providers must be unique")
     if missing:
         names = ", ".join(sorted(set(missing)))

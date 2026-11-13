@@ -289,9 +289,11 @@ async function saveWorkspace(event) {
     activeWorkspaceId = workspace.id;
     resetWorkspaceForm();
     await loadWorkspaces();
-    $("status").textContent = wasEditing
-      ? "Workspace updated."
-      : "Workspace created.";
+    const saved = wasEditing ? "Workspace updated." : "Workspace created.";
+    const warnings = workspace.warnings || [];
+    $("status").textContent = warnings.length
+      ? `${saved} Warning: ${warnings.join(" ")}`
+      : saved;
   } catch (error) {
     $("status").textContent = error.message;
   }
@@ -403,9 +405,16 @@ async function deliberate() {
     const result = await response.json();
     renderResult(result, response.headers.get("X-Conclave-Run-ID"));
     const cost = formatCost(result.estimated_cost_usd);
+    const sourceCount = result.panel.independent_source_count;
+    const sameSource = sourceCount != null && result.panel.successful_count > sourceCount;
+    const sources = sourceCount != null
+      ? ` ${sourceCount} independent source(s)${sameSource ? ", so some answers count as one" : ""}.`
+      : "";
     $("status").textContent = result.panel.synthesizeable
-      ? `${result.panel.successful_count} delegate(s) completed.${cost ? " Estimated run cost " + cost + "." : ""}`
-      : "Not enough delegates succeeded to synthesize.";
+      ? `${result.panel.successful_count} delegate(s) completed.${sources}${cost ? " Estimated run cost " + cost + "." : ""}`
+      : sameSource
+        ? `${result.panel.successful_count} delegate(s) answered, but only ${sourceCount} independent source(s): not enough to synthesize.`
+        : "Not enough delegates succeeded to synthesize.";
     await loadHistory();
   } catch (error) {
     $("status").textContent = error.message;
