@@ -4,6 +4,8 @@ Last updated 2026-11-13. This replaces the October 24 handoff note, whose branch
 
 ## Where things stand
 
+The evidence for each claim below, and what is still unverified, is in `docs/RELEASE_EVIDENCE.md`.
+
 The v1 pipeline is implemented on `main` and covered by tests: independent-source quorum, blind judging, positions, the Arbiter's structured output, provider error classes and fallback trails, length and prompt-size controls, the call ledger, retry chains, a bounded history, a schema version with a verified backup before upgrades, an adversarial suite for untrusted model output, and a mock benchmark of thirteen invariants. `README.md` describes what exists and what does not; `docs/CONFIGURATION.md` documents every setting.
 
 It has **not** been run against real providers since 2026-10-09 (see `docs/TEST_LOG.md`), before most of this work.
