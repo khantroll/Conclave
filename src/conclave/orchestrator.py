@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import uuid
 from contextlib import contextmanager
 from collections.abc import Awaitable, Callable, Mapping
@@ -41,7 +42,7 @@ from .ledger import (
     use_scope,
 )
 from .providers.base import Provider, ProviderError
-from .sources import ProviderIdentity, group_sources, judge_overlap
+from .sources import ProviderIdentity, group_sources, identity_of, judge_overlap, provenance_of
 
 
 StageCallback = Callable[[DeliberationResult], Awaitable[None]]
@@ -78,13 +79,13 @@ class Orchestrator:
         """
         successful_count = sum(r.status == DelegateStatus.SUCCEEDED for r in delegates)
         sources = group_sources(delegates, self._identities)
-        families = {
-            r.name: self._identities[r.name].family
-            for r in delegates
-            if r.status == DelegateStatus.SUCCEEDED
-            and r.name in self._identities
-            and self._identities[r.name].family
-        }
+        families = {}
+        for r in delegates:
+            if r.status != DelegateStatus.SUCCEEDED:
+                continue
+            identity = identity_of(r, self._identities)
+            if identity is not None and identity.family:
+                families[r.name] = identity.family
         quorum = evaluate_quorum(
             required=minimum_successes,
             delegates=delegates,
@@ -573,6 +574,8 @@ class Orchestrator:
         token = use_scope(scope)
         try:
             result = await self._call_provider(delegate, provider)
+            # Recorded with the answer: what this provider was when it gave it.
+            result = result.model_copy(update={"provenance": provenance_of(identity)})
         except BaseException:
             # Cancelled mid-call: the request in flight may still be billed.
             scope.close_open("cancelled")
@@ -659,18 +662,32 @@ class Orchestrator:
                 latency_ms=_elapsed_ms(started),
             )
 
-        if not response.text.strip():
+        # Whatever a provider reports is untrusted data. A reply whose text or metadata is not
+        # the shape we need becomes a contained failure of this one delegate, never an exception
+        # that aborts the panel. (Cancellation is a BaseException and is not caught here.)
+        try:
+            text, model, usage, cost, attempts = _clean_response(response)
+        except Exception:  # noqa: BLE001 - any malformed shape is the provider's failure
             return DelegateResult(
                 name=delegate.name,
                 status=DelegateStatus.FAILED,
                 prompt=delegate.prompt,
-                raw_response=response.text,
-                model=response.model,
-                usage=response.usage,
-                estimated_cost_usd=response.estimated_cost_usd,
+                error="Provider returned a malformed reply (unusable text or metadata)",
+                error_kind="malformed",
+                latency_ms=_elapsed_ms(started),
+            )
+        if not text.strip():
+            return DelegateResult(
+                name=delegate.name,
+                status=DelegateStatus.FAILED,
+                prompt=delegate.prompt,
+                raw_response=text,
+                model=model,
+                usage=usage,
+                estimated_cost_usd=cost,
                 error="Provider returned an empty response",
                 error_kind="empty_response",
-                attempts=response.attempts,
+                attempts=attempts,
                 latency_ms=_elapsed_ms(started),
             )
 
@@ -678,13 +695,38 @@ class Orchestrator:
             name=delegate.name,
             status=DelegateStatus.SUCCEEDED,
             prompt=delegate.prompt,
-            raw_response=response.text,
-            model=response.model,
-            usage=response.usage,
-            estimated_cost_usd=response.estimated_cost_usd,
-            attempts=response.attempts,
+            raw_response=text,
+            model=model,
+            usage=usage,
+            estimated_cost_usd=cost,
+            attempts=attempts,
             latency_ms=_elapsed_ms(started),
         )
+
+
+MAX_REPORTED_MODEL_CHARS = 200
+
+
+def _clean_response(response) -> tuple[str, str | None, dict, float | None, int]:
+    """Text, reported model, usage, cost and attempts, each of the type the pipeline relies on.
+
+    The text must be a string (anything else raises, and the caller records a malformed reply).
+    Metadata of the wrong type is dropped to unknown rather than trusted: a reported model that
+    is not a string, usage that is not a mapping, a cost that is not a finite non-negative number.
+    """
+    text = response.text
+    if not isinstance(text, str):
+        raise TypeError("reply text is not a string")
+    model = response.model
+    model = model[:MAX_REPORTED_MODEL_CHARS] if isinstance(model, str) and model.strip() else None
+    usage = response.usage if isinstance(response.usage, dict) else {}
+    cost = response.estimated_cost_usd
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)) or not math.isfinite(cost) or cost < 0:
+        cost = None
+    attempts = response.attempts
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 1:
+        attempts = 1
+    return text, model, usage, cost, attempts
 
 
 _HTTP_KINDS = frozenset(
