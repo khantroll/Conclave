@@ -34,3 +34,9 @@ Validation: 66 tests pass on Python 3.12; Ruff, Python compilation, JavaScript s
 - Each fallback gets a separate timeout. A shared total stage deadline and richer fallback audit trail remain possible reliability follow-ups.
 - Current account quotas, model availability, and response quality need live testing with the user's configuration.
 - No verified assignment to Codex/Cursor or running instance on Xenos is known from this cloud session.
+
+## Research follow-up — November 13, 2026
+
+See [November 13 research roadmap](RESEARCH_ROADMAP_2026-11-13.md). This addition records proposals only and does not certify the historical branch/runtime status above.
+
+Start with recorded-output coordination fixtures (R04), then contribution-aware Critic evaluation (R05). Reuse the current orchestration and adversarial checks; measure evidence retention, minority findings, failures, per-case regressions, tokens, and p95 latency before changing architecture. Bound any harness optimization (R06) with a held-out set. Newsletter-derived routing (R08) remains shadow-only; tool-transport/host-permission ideas (R09 and the older backlog lead) do not authorize external execution. Existing real-provider validation remains necessary.
