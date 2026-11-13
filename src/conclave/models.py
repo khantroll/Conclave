@@ -34,10 +34,36 @@ class DelegateResult(BaseModel):
     attempts: int = Field(default=1, ge=1)
 
 
+class QuorumReport(BaseModel):
+    """Whether a finished panel met the configured quorum, judged by answers received."""
+
+    status: Literal["met", "unmet", "single_source_override"]
+    required: int
+    qualifying_sources: int
+    responses_received: int
+    delegates_attempted: int
+    summary: str
+    shortfalls: list[str] = Field(default_factory=list)
+
+
+class SelectionTrace(BaseModel):
+    """How the delegates of a run were chosen, kept with the saved request."""
+
+    auto_selected: list[str] = Field(default_factory=list)
+    topped_up: list[str] = Field(default_factory=list)
+    # Picked by the ranking but not run, because the provider is not configured or lacks
+    # credentials.
+    skipped_unavailable: list[str] = Field(default_factory=list)
+    required_sources: int
+    expected_sources: int
+    single_source: bool = False
+
+
 class PanelRequest(BaseModel):
     question: str = Field(min_length=1)
     delegates: list[DelegateRequest] = Field(min_length=1)
     minimum_successes: int = Field(default=1, ge=1)
+    allow_single_source: bool = False
 
 
 class SourceGroup(BaseModel):
@@ -58,6 +84,8 @@ class PanelResult(BaseModel):
     # saved before source counting existed.
     independent_source_count: int | None = None
     sources: list[SourceGroup] = Field(default_factory=list)
+    # None on runs saved before quorum reporting existed.
+    quorum: QuorumReport | None = None
 
 
 class DeliberationRequest(BaseModel):
@@ -77,6 +105,10 @@ class DeliberationRequest(BaseModel):
     # in a chain reuses it, so stored runs rebuild their prompts byte for byte.
     seed: str | None = None
     judge_response_char_limit: int = Field(default=24_000, ge=1)
+    # Explicit permission to run when only one independent source is available or answers,
+    # although the quorum asks for more. Such a run is labelled and never reported as met.
+    allow_single_source: bool = False
+    selection: SelectionTrace | None = None
 
 
 class DeliberationResult(BaseModel):
@@ -98,6 +130,7 @@ class WorkspaceCreate(BaseModel):
     arbiter_fallbacks: list[str] = Field(default_factory=list)
     minimum_successes: int = Field(default=1, ge=1)
     auto_select_delegates: bool = False
+    allow_single_source: bool = False
 
 
 class Workspace(WorkspaceCreate):

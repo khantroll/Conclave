@@ -14,6 +14,7 @@ from .models import (
     PanelResult,
 )
 from .prompts import build_arbiter_prompt, build_critic_prompt, build_delegate_prompt
+from .quorum import evaluate_quorum
 from .providers.base import Provider, ProviderError
 from .sources import ProviderIdentity, group_sources
 
@@ -40,18 +41,30 @@ class Orchestrator:
         question: str,
         delegates: list[DelegateResult],
         minimum_successes: int,
+        allow_single_source: bool = False,
     ) -> PanelResult:
-        """Count real answers, and independent sources, for a set of delegate results."""
+        """Count real answers, and independent sources, for a set of delegate results.
+
+        The quorum is judged on the answers that actually arrived. It proceeds only when
+        it is met, or when one source answered and the caller explicitly allowed that.
+        """
         successful_count = sum(r.status == DelegateStatus.SUCCEEDED for r in delegates)
         sources = group_sources(delegates, self._identities)
+        quorum = evaluate_quorum(
+            required=minimum_successes,
+            delegates=delegates,
+            sources=sources,
+            allow_single_source=allow_single_source,
+        )
         return PanelResult(
             question=question,
             delegates=delegates,
             successful_count=successful_count,
             failed_count=len(delegates) - successful_count,
-            synthesizeable=len(sources) >= minimum_successes,
+            synthesizeable=quorum.status != "unmet",
             independent_source_count=len(sources),
             sources=sources,
+            quorum=quorum,
         )
 
     @property
@@ -65,6 +78,7 @@ class Orchestrator:
             question=request.question,
             delegates=list(results),
             minimum_successes=request.minimum_successes,
+            allow_single_source=request.allow_single_source,
         )
 
     async def test_provider(self, name: str, *, timeout_seconds: float = 20.0) -> DelegateResult:
@@ -105,6 +119,7 @@ class Orchestrator:
                 for name in request.delegates
             ],
             minimum_successes=request.minimum_successes,
+            allow_single_source=request.allow_single_source,
         )
         panel = await self.run_panel(panel_request)
 
@@ -196,6 +211,7 @@ class Orchestrator:
             question=request.question,
             delegates=delegates,
             minimum_successes=request.minimum_successes,
+            allow_single_source=request.allow_single_source,
         )
 
         if not panel.synthesizeable:
