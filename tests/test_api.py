@@ -498,3 +498,102 @@ def test_interrupted_run_meeting_quorum_can_be_resumed(tmp_path, monkeypatch):
     resumed = TestClient(make_app(store)).post(f"/api/runs/{run_id}/arbiter/retry")
     assert resumed.status_code == 200
     assert resumed.json()["result"]["arbiter"]["status"] == "succeeded"
+
+
+# --- seed, caps and byte-for-byte prompt rebuild (P0-4) ---
+
+PANEL_BODY = {
+    "question": "Q",
+    "delegates": ["demo-a", "demo-b"],
+    "critic": "demo-critic",
+    "arbiter": "demo-arbiter",
+    "minimum_successes": 2,
+}
+
+
+def test_run_gets_a_seed_and_judge_prompts_rebuild_byte_for_byte(tmp_path):
+    from conclave.prompts import build_arbiter_prompt, build_critic_prompt
+
+    store = WorkspaceStore(tmp_path / "t.db")
+    client = TestClient(make_app(store))
+    assert client.post("/api/deliberate", json=PANEL_BODY).status_code == 200
+    run = store.get_run(store.list_runs()[0].id)
+    assert run.request.seed and len(run.request.seed) == 32
+
+    panel = run.result.panel.delegates
+    kwargs = {
+        "seed": run.request.seed,
+        "response_char_limit": run.request.judge_response_char_limit,
+    }
+    assert run.result.critic.prompt == build_critic_prompt(
+        question=run.request.question, delegate_results=panel, **kwargs
+    )
+    assert run.result.arbiter.prompt == build_arbiter_prompt(
+        question=run.request.question,
+        delegate_results=panel,
+        critic_result=run.result.critic,
+        **kwargs,
+    )
+
+
+def test_retry_reuses_the_seed_and_markers_of_the_original_run(tmp_path):
+    from conclave.prompts import marker_token
+
+    store = WorkspaceStore(tmp_path / "t.db")
+    client = TestClient(make_app(store))
+    client.post("/api/deliberate", json=PANEL_BODY)
+    first = store.list_runs()[0]
+    retried = client.post(f"/api/runs/{first.id}/arbiter/retry").json()
+    assert retried["request"]["seed"] == first.request.seed
+    token = marker_token(first.request.seed)
+    assert f"<<<RESPONSE A {token}>>>" in retried["result"]["arbiter"]["prompt"]
+
+
+def test_legacy_run_without_seed_gets_one_on_retry(tmp_path):
+    store = WorkspaceStore(tmp_path / "t.db")
+    client = TestClient(make_app(store))
+    client.post(
+        "/api/deliberate",
+        json={"question": "Q", "delegates": ["demo-a"], "arbiter": "demo-arbiter"},
+    )
+    run = store.list_runs()[0]
+    legacy = run.request.model_copy(update={"seed": None})
+    saved = store.save_run(question="Q", request=legacy, result=run.result)
+    retried = client.post(f"/api/runs/{saved.id}/arbiter/retry").json()
+    seed = retried["request"]["seed"]
+    assert seed
+
+    # The seed that was stored is the one the prompt was built from.
+    from conclave.models import DelegateResult
+    from conclave.prompts import build_arbiter_prompt, marker_token
+
+    assert f"<<<RESPONSE A {marker_token(seed)}>>>" in retried["result"]["arbiter"]["prompt"]
+    stored = store.get_run(retried["id"])
+    assert stored.request.seed == seed
+    assert stored.result.arbiter.prompt == build_arbiter_prompt(
+        question=stored.request.question,
+        delegate_results=[DelegateResult(**d.model_dump()) for d in stored.result.panel.delegates],
+        critic_result=stored.result.critic,
+        seed=seed,
+        response_char_limit=stored.request.judge_response_char_limit,
+    )
+
+
+def test_huge_answer_is_capped_in_judge_prompt_but_stored_whole(tmp_path, monkeypatch):
+    import conclave.api as api_module
+    from conclave.providers.fake import FakeProvider
+
+    huge = "x" * 1_000_000
+
+    def make(response="ok", **kwargs):
+        return FakeProvider(huge if response == "Delegate A response" else response, **kwargs)
+
+    monkeypatch.setattr(api_module, "FakeProvider", make)
+    store = WorkspaceStore(tmp_path / "t.db")
+    client = TestClient(make_app(store))
+    client.post("/api/deliberate", json=PANEL_BODY)
+    run = store.get_run(store.list_runs()[0].id)
+    stored = next(d for d in run.result.panel.delegates if d.name == "demo-a")
+    assert len(stored.raw_response) == 1_000_000
+    assert len(run.result.critic.prompt) < 60_000
+    assert "[truncated: 976000 characters omitted]" in run.result.critic.prompt

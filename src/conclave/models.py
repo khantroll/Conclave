@@ -60,6 +60,10 @@ class DeliberationRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
     critic_timeout_seconds: float = Field(default=60.0, gt=0)
     arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
+    # Random per-run seed. Marker tokens in judge prompts derive from it, and every retry
+    # in a chain reuses it, so stored runs rebuild their prompts byte for byte.
+    seed: str | None = None
+    judge_response_char_limit: int = Field(default=24_000, ge=1)
 
 
 class DeliberationResult(BaseModel):
