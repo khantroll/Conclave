@@ -623,6 +623,16 @@ def _seeded(request: DeliberationRequest) -> DeliberationRequest:
 
 
 def _validate_workspace(request: WorkspaceCreate, provider_names: list[str]) -> None:
+    if "critic" not in request.model_fields_set:
+        # There is no Critic default: whether a Critic helps has not been measured yet, so the
+        # choice is the user's, made explicitly (a provider name, or null for no Critic).
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "critic is required: name a Critic provider, or send null for no Critic. There "
+                "is no default, because the Critic's value has not been measured yet."
+            ),
+        )
     if request.single_source_mode is None:
         raise HTTPException(
             status_code=422,

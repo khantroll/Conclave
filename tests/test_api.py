@@ -255,6 +255,7 @@ def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_pat
             "delegates": ["not-configured"],
             "arbiter": "demo-arbiter",
             "single_source_mode": "arbiter_single_source",
+            "critic": None,
         },
     )
     assert bad.status_code == 422
@@ -282,6 +283,7 @@ def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_pat
             "delegates": ["demo-a"],
             "arbiter": "demo-arbiter",
             "single_source_mode": "arbiter_single_source",
+            "critic": None,
             "minimum_successes": 1,
             "auto_select_delegates": True,
         },
@@ -346,6 +348,7 @@ def test_deleted_workspace_run_remains_in_global_history(tmp_path):
             "delegates": ["demo-a"],
             "arbiter": "demo-arbiter",
             "single_source_mode": "arbiter_single_source",
+            "critic": None,
         },
     ).json()
 
@@ -377,6 +380,7 @@ def test_workspace_validation_rejects_duplicate_delegates_and_unknown_roles(tmp_
             "delegates": ["demo-a", "demo-a"],
             "arbiter": "demo-arbiter",
             "single_source_mode": "arbiter_single_source",
+            "critic": None,
         },
     )
     assert duplicate.status_code == 422
@@ -390,6 +394,7 @@ def test_workspace_validation_rejects_duplicate_delegates_and_unknown_roles(tmp_
             "roles": {"demo-b": "Not actually selected"},
             "arbiter": "demo-arbiter",
             "single_source_mode": "arbiter_single_source",
+            "critic": None,
         },
     )
     assert bad_role.status_code == 422
@@ -422,6 +427,7 @@ def test_workspace_rejects_invalid_stage_fallbacks(tmp_path):
             "delegates": ["demo-a"],
             "arbiter": "demo-arbiter",
             "single_source_mode": "arbiter_single_source",
+            "critic": None,
             "arbiter_fallbacks": ["not-real"],
         },
     )
@@ -714,6 +720,7 @@ def test_workspace_with_two_delegates_of_one_config_saves_with_a_warning(tmp_pat
         "delegates": ["one", "two", "three"],
         "arbiter": "demo-arbiter",
         "single_source_mode": "arbiter_single_source",
+        "critic": None,
         "minimum_successes": 2,
     }
     created = _post(client, "/api/workspaces", body, 201).json()

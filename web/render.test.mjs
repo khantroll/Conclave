@@ -321,3 +321,15 @@ test("the history list reads summary fields and shows a run that is not complete
   assert.match(html, /2\/3 delegates · Critic ✕ · No Arbiter · detached · interrupted · \$0\.500/);
   assert.doesNotMatch(render.historyHtml([{ id: "r", question: "q", created_at: "t", status: "complete" }], String), /complete/);
 });
+
+test("the Critic has no default: the form must choose none or name a provider", () => {
+  assert.deepEqual(render.criticChoice("none", "ignored"), { ok: true, critic: null });
+  assert.deepEqual(render.criticChoice("provider", "  mistral "), { ok: true, critic: "mistral" });
+  assert.equal(render.criticChoice("provider", "   ").ok, false);
+  assert.equal(render.criticChoice("provider", undefined).ok, false);
+  for (const mode of ["", undefined, null, "yes", "default"]) {
+    const result = render.criticChoice(mode, "mistral");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /no default/);
+  }
+});

@@ -14,6 +14,7 @@ const {
   describeRefresh,
   delegateCardsHtml,
   judgeOverlapNotice,
+  criticChoice,
   costLines,
   structureHtml,
   structureNotices,
@@ -268,7 +269,7 @@ function workspaceFormBody() {
       .map(s => s.trim())
       .filter(Boolean),
     roles: parseRoles($("workspaceRoles").value),
-    critic: $("workspaceCritic").value.trim() || null,
+    critic: criticChoice($("workspaceCriticMode").value, $("workspaceCritic").value).critic ?? null,
     critic_fallbacks: $("workspaceCriticFallbacks").value
       .split(",").map(s => s.trim()).filter(Boolean),
     arbiter: $("workspaceArbiter").value.trim(),
@@ -283,6 +284,13 @@ function workspaceFormBody() {
 
 async function saveWorkspace(event) {
   event.preventDefault();
+  const choice = criticChoice($("workspaceCriticMode").value, $("workspaceCritic").value);
+  if (!choice.ok) {
+    $("status").textContent = choice.error;
+    $("workspaceFormDetails").open = true;
+    $("workspaceCriticMode").focus();
+    return;
+  }
   const body = workspaceFormBody();
 
   const overlaps = [];
@@ -337,6 +345,7 @@ function beginWorkspaceEdit() {
   $("workspaceContext").value = workspace.context || "";
   $("workspaceDelegates").value = workspace.delegates.join(", ");
   $("workspaceRoles").value = serializeRoles(workspace.roles);
+  $("workspaceCriticMode").value = workspace.critic ? "provider" : "none";
   $("workspaceCritic").value = workspace.critic || "";
   $("workspaceCriticFallbacks").value = (workspace.critic_fallbacks || []).join(", ");
   $("workspaceArbiter").value = workspace.arbiter;
