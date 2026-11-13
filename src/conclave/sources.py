@@ -148,3 +148,23 @@ def sharing_config(
             continue
         by_key.setdefault(identity.config_key, []).append(name)
     return [members for members in by_key.values() if len(members) > 1]
+
+
+def judge_overlap(
+    judge: DelegateResult,
+    delegates: Iterable[DelegateResult],
+    identities: Mapping[str, ProviderIdentity],
+) -> list[str]:
+    """Names of the successful delegates that are the same source as this judge."""
+    marker = "\x00judge"
+    answered = [r for r in delegates if r.status == DelegateStatus.SUCCEEDED]
+    identity = identities.get(judge.name)
+    # A judge that never answered judged nothing, so it cannot have judged its own source.
+    if judge.status != DelegateStatus.SUCCEEDED or identity is None or not answered:
+        return []
+    stand_in = judge.model_copy(update={"name": marker, "status": DelegateStatus.SUCCEEDED})
+    groups = group_sources([*answered, stand_in], {**identities, marker: identity})
+    for group in groups:
+        if marker in group.delegates:
+            return [name for name in group.delegates if name != marker]
+    return []

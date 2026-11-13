@@ -14,10 +14,15 @@ from .models import (
     PanelResult,
     SingleSourceAnswer,
 )
-from .prompts import build_arbiter_prompt, build_critic_prompt, build_delegate_prompt
+from .prompts import (
+    build_arbiter_prompt,
+    build_critic_prompt,
+    build_delegate_prompt,
+    label_map,
+)
 from .quorum import describe_single_source, evaluate_quorum
 from .providers.base import Provider, ProviderError
-from .sources import ProviderIdentity, group_sources
+from .sources import ProviderIdentity, group_sources, judge_overlap
 
 
 StageCallback = Callable[[DeliberationResult], Awaitable[None]]
@@ -101,9 +106,19 @@ class Orchestrator:
         critic: DelegateResult | None = None,
         arbiter: DelegateResult | None = None,
         answer: SingleSourceAnswer | None = None,
+        seed: str | None = None,
     ) -> DeliberationResult:
         """Assemble a result. A single-source run carries one label, used everywhere."""
         single = panel.synthesizeable and panel.independent_source_count == 1
+        labels = label_map(panel.delegates, seed) if panel.synthesizeable else {}
+        name_label = {name: label for label, name in labels.items()}
+        overlapping = {
+            name_label[name]
+            for judge in (critic, arbiter)
+            if judge is not None
+            for name in judge_overlap(judge, panel.delegates, self._identities)
+            if name in name_label
+        }
         return DeliberationResult(
             panel=panel,
             critic=critic,
@@ -114,6 +129,8 @@ class Orchestrator:
                 describe_single_source(panel.quorum) if single and panel.quorum else None
             ),
             single_source_answer=answer,
+            label_map=labels,
+            judge_overlaps=sorted(overlapping),
         )
 
     async def deliberate(
@@ -146,7 +163,7 @@ class Orchestrator:
         )
         panel = await self.run_panel(panel_request)
 
-        after_panel = self._result(panel)
+        after_panel = self._result(panel, seed=request.seed)
         if on_stage is not None:
             await on_stage(after_panel)
         if not panel.synthesizeable:
@@ -191,7 +208,7 @@ class Orchestrator:
                 timeout_seconds=request.critic_timeout_seconds,
             )
             if on_stage is not None:
-                await on_stage(self._result(panel, critic=critic))
+                await on_stage(self._result(panel, critic=critic, seed=request.seed))
 
         if single and request.single_source_mode == "return_answer":
             only = next(r for r in panel.delegates if r.status == DelegateStatus.SUCCEEDED)
@@ -200,6 +217,7 @@ class Orchestrator:
                 answer=SingleSourceAnswer(
                     delegate=only.name, text=only.raw_response or "", model=only.model
                 ),
+                seed=request.seed,
             )
         else:
             arbiter = await self._run_with_fallback(
@@ -217,7 +235,7 @@ class Orchestrator:
                 ),
                 timeout_seconds=request.arbiter_timeout_seconds,
             )
-            final = self._result(panel, critic=critic, arbiter=arbiter)
+            final = self._result(panel, critic=critic, arbiter=arbiter, seed=request.seed)
         if on_stage is not None:
             await on_stage(final)
         return final
@@ -255,7 +273,7 @@ class Orchestrator:
             allow_single_source=request.allow_single_source,
         )
         if not panel.synthesizeable:
-            return self._result(panel)
+            return self._result(panel, seed=request.seed)
         return await self._downstream(
             request=request, panel=panel, critic=None, rerun_critic=True
         )

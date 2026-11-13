@@ -86,17 +86,6 @@ def prepare_untrusted_text(text: str | None, *, limit: int = DEFAULT_RESPONSE_CH
     return escape_markers(escape_unsafe_characters(text)) + note
 
 
-def header_text(value: str, limit: int = 80) -> str:
-    """Provider-reported metadata (such as the model name) shown outside a response's markers.
-
-    It comes from the provider's reply, so it is untrusted: this makes it one short, inert
-    line (no newlines, control or bidirectional characters, or marker sequences).
-    """
-    flat = " ".join(escape_unsafe_characters(value).split())
-    flat = escape_markers(flat)
-    return flat if len(flat) <= limit else flat[:limit] + "\u2026"
-
-
 def _label(index: int) -> str:
     label = ""
     index += 1
@@ -104,6 +93,36 @@ def _label(index: int) -> str:
         index, rem = divmod(index - 1, 26)
         label = chr(ord("A") + rem) + label
     return label
+
+
+def label_assignment(
+    delegate_results: Iterable[DelegateResult], seed: str | None
+) -> list[tuple[str, DelegateResult]]:
+    """Blind labels for the answers a judge sees: ``[(label, result), ...]`` in label order.
+
+    The permutation covers every delegate in the request, answered or not, and is derived from
+    the run seed and the delegate name only. A delegate therefore keeps its label whoever else
+    answers (a delegate retry may fill a gap, and nobody else is relabelled), the order differs
+    between runs, and it never follows the workspace order. Nothing about a provider is used.
+    A delegate that did not answer leaves its letter unused.
+    """
+    ordered = sorted(
+        delegate_results,
+        key=lambda r: (
+            hashlib.sha256(f"{seed or ''}|order|{r.name}".encode()).hexdigest(),
+            r.name,
+        ),
+    )
+    return [
+        (_label(index), result)
+        for index, result in enumerate(ordered)
+        if result.status == DelegateStatus.SUCCEEDED
+    ]
+
+
+def label_map(delegate_results: Iterable[DelegateResult], seed: str | None) -> dict[str, str]:
+    """Label -> delegate name, for the console (judges never see the names)."""
+    return {label: result.name for label, result in label_assignment(delegate_results, seed)}
 
 
 def _wrap(tag: str, end_tag: str, token: str, body: str) -> str:
@@ -118,17 +137,10 @@ def _successful_response_blocks(
 ) -> list[str]:
     token = marker_token(seed)
     blocks: list[str] = []
-    successful = [
-        result for result in delegate_results if result.status == DelegateStatus.SUCCEEDED
-    ]
-    for index, result in enumerate(successful):
-        label = _label(index)
-        model = f" ({header_text(result.model)})" if result.model else ""
+    for label, result in label_assignment(delegate_results, seed):
         body = prepare_untrusted_text(result.raw_response, limit=response_char_limit)
-        blocks.append(
-            f"Response {label}: {result.name}{model}\n"
-            + _wrap(f"RESPONSE {label}", label, token, body)
-        )
+        # The label is the only identity a judge gets: no provider, model, timing or cost.
+        blocks.append(f"Response {label}\n" + _wrap(f"RESPONSE {label}", label, token, body))
     return blocks
 
 
@@ -162,19 +174,15 @@ def coverage_note(
 def source_note(
     delegate_results: Iterable[DelegateResult],
     source_groups: Iterable[SourceGroup] | None,
+    seed: str | None = None,
 ) -> str | None:
     """Tell a judge which responses are one source, so agreement is not over-counted."""
     if not source_groups:
         return None
-    label_of = {
-        result.name: _label(index)
-        for index, result in enumerate(
-            r for r in delegate_results if r.status == DelegateStatus.SUCCEEDED
-        )
-    }
+    label_of = {result.name: label for label, result in label_assignment(delegate_results, seed)}
     lines = []
     for group in source_groups:
-        labels = [label_of[name] for name in group.delegates if name in label_of]
+        labels = sorted(label_of[name] for name in group.delegates if name in label_of)
         if len(labels) < 2:
             continue
         joined = ", ".join(labels[:-1]) + f" and {labels[-1]}"
@@ -206,7 +214,7 @@ def build_critic_prompt(
         sections.append(f"{WORKSPACE_CONTEXT_NOTICE}:\n{workspace_context.strip()}")
     sections.append(f"Original question:\n{question.strip()}")
     sections.append(coverage_note(delegate_results, source_groups))
-    note = source_note(delegate_results, source_groups)
+    note = source_note(delegate_results, source_groups, seed)
     if note:
         sections.append(note)
     sections.append(
@@ -246,7 +254,7 @@ def build_arbiter_prompt(
         sections.append(f"{WORKSPACE_CONTEXT_NOTICE}:\n{workspace_context.strip()}")
     sections.append(f"Original question:\n{question.strip()}")
     sections.append(coverage_note(delegate_results, source_groups))
-    note = source_note(delegate_results, source_groups)
+    note = source_note(delegate_results, source_groups, seed)
     if note:
         sections.append(note)
     sections.append(

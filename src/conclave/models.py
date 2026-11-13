@@ -137,6 +137,11 @@ class DeliberationResult(BaseModel):
     single_source_label: str | None = None
     # Set when the run returned the delegate's answer instead of running an Arbiter.
     single_source_answer: SingleSourceAnswer | None = None
+    # Blind judging: label -> delegate name, for the console only. Judges see labels alone.
+    label_map: dict[str, str] = Field(default_factory=dict)
+    # Labels of responses that come from the same source as the Critic or the Arbiter that
+    # judged them. Judges are not told, since that would undo the blinding.
+    judge_overlaps: list[str] = Field(default_factory=list)
 
 
 class WorkspaceCreate(BaseModel):
