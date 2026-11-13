@@ -5,15 +5,14 @@ from collections.abc import Iterable, Mapping
 from .models import DelegateSelection, ProviderDescriptor, RequestAnalysis
 
 
-def select_delegates(
+def rank_candidates(
     *,
     analysis: RequestAnalysis,
     candidates: Iterable[str],
     descriptors: Mapping[str, ProviderDescriptor],
-) -> DelegateSelection:
+) -> list[str]:
+    """Candidates in preference order: capability match, then priority, then pool order."""
     available = list(dict.fromkeys(candidates))
-    target = min(analysis.recommended_delegate_count, len(available))
-
     indexed = {name: index for index, name in enumerate(available)}
 
     def score(name: str) -> tuple[int, int, int]:
@@ -28,7 +27,20 @@ def select_delegates(
         # order is the final stable tie breaker.
         return (matches * 10 + general_bonus, -descriptor.priority, -indexed[name])
 
-    selected = sorted(available, key=score, reverse=True)[:target]
+    return sorted(available, key=score, reverse=True)
+
+
+def select_delegates(
+    *,
+    analysis: RequestAnalysis,
+    candidates: Iterable[str],
+    descriptors: Mapping[str, ProviderDescriptor],
+) -> DelegateSelection:
+    available = list(dict.fromkeys(candidates))
+    target = min(analysis.recommended_delegate_count, len(available))
+    selected = rank_candidates(
+        analysis=analysis, candidates=available, descriptors=descriptors
+    )[:target]
     return DelegateSelection(
         analysis=analysis,
         selected=selected,

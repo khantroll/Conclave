@@ -67,6 +67,15 @@ A workspace may hold two delegates of one configured model (sampling a model twi
 
 Limits: this is based on configuration and the reported model name. It does not detect two different models trained on the same data, or near-identical answer text.
 
+## Quorum, automatic selection and single-source runs
+
+`minimum_successes` is the number of **independent sources** a run needs, and it is never lowered.
+
+- **Automatic selection tops up.** If a workspace uses automatic delegate selection and the question picks fewer delegates than the quorum needs, Conclave adds delegates from the workspace pool, in preference order, until the sources they represent reach the quorum. A candidate that would only repeat a source already chosen (same configured model) is skipped, providers that are not configured or lack credentials are never added, and only as many as needed are added. The saved request records `selection.auto_selected` and `selection.topped_up`. There is no per-run spending limit in Conclave yet, so top-up is bounded only by the quorum and by the pool you configured.
+- **If the quorum cannot be reached, the run does not start.** The server answers HTTP 422 with `code: "quorum_unmet"`, the number of sources required and available, which delegates were selected, which providers were unavailable and why, and which delegates share a source. No provider is called and no run is stored. The same check applies to `POST /api/deliberate`, which runs exactly the delegates you list.
+- **The final check uses the answers that arrived.** Choosing enough sources does not guarantee enough answers. After the panel runs, `panel.quorum` reports `met`, `unmet` or `single_source_override`, counting only non-empty answers grouped into independent sources. When it is `unmet` the Critic and Arbiter are not run, and the report names each delegate that timed out, failed or returned nothing, and any answers that collapsed into one source.
+- **Single-source runs are opt-in.** A workspace (or a direct request) may set `allow_single_source: true`. Then, when exactly one independent source is available or answers, the run proceeds with one delegate and is labelled `single_source_override`: it states that the quorum was not met and is not a consensus. It never covers two sources when three are required. Without the setting, such a run stops as described above.
+
 ## Connectivity test
 
 The web console exposes an explicit **Test** button for each configured provider. It sends a tiny request to that provider. This can incur a small API charge on paid endpoints.

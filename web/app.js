@@ -12,7 +12,10 @@ async function api(path, options = {}) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `HTTP ${response.status}`);
+    const detail = body.detail;
+    throw new Error(
+      (detail && typeof detail === "object" ? detail.message : detail) || `HTTP ${response.status}`
+    );
   }
   return response;
 }
@@ -181,7 +184,7 @@ function renderWorkspaceSummary() {
       <dt>Arbiter</dt><dd>${escapeHtml(workspace.arbiter)}</dd>
       <dt>Arbiter fallback</dt><dd>${escapeHtml((workspace.arbiter_fallbacks || []).join(" → ") || "None")}</dd>
       <dt>Routing</dt><dd>${workspace.auto_select_delegates ? "Automatic subset" : "Fixed panel"}</dd>
-      <dt>Quorum</dt><dd>${workspace.minimum_successes}</dd>
+      <dt>Quorum</dt><dd>${workspace.minimum_successes} independent source(s)${workspace.allow_single_source ? " — single-source runs allowed (labelled, quorum not met)" : ""}</dd>
       <dt>Context</dt><dd>${workspace.context ? "Configured" : "None"}</dd>
     </dl>
     ${overlaps.length ? `<div class="warning">⚠ ${escapeHtml(overlaps.join("; "))}</div>` : ""}
@@ -252,6 +255,7 @@ function workspaceFormBody() {
       .split(",").map(s => s.trim()).filter(Boolean),
     minimum_successes: Number($("workspaceQuorum").value || 1),
     auto_select_delegates: $("workspaceAutoSelect").checked,
+    allow_single_source: $("workspaceAllowSingleSource").checked,
   };
 }
 
@@ -317,6 +321,7 @@ function beginWorkspaceEdit() {
   $("workspaceArbiterFallbacks").value = (workspace.arbiter_fallbacks || []).join(", ");
   $("workspaceQuorum").value = String(workspace.minimum_successes);
   $("workspaceAutoSelect").checked = Boolean(workspace.auto_select_delegates);
+  $("workspaceAllowSingleSource").checked = Boolean(workspace.allow_single_source);
   $("workspaceFormSummary").textContent = "Edit workspace";
   $("workspaceSubmit").textContent = "Save changes";
   $("workspaceCancel").classList.remove("hidden");
@@ -410,11 +415,18 @@ async function deliberate() {
     const sources = sourceCount != null
       ? ` ${sourceCount} independent source(s)${sameSource ? ", so some answers count as one" : ""}.`
       : "";
-    $("status").textContent = result.panel.synthesizeable
-      ? `${result.panel.successful_count} delegate(s) completed.${sources}${cost ? " Estimated run cost " + cost + "." : ""}`
-      : sameSource
-        ? `${result.panel.successful_count} delegate(s) answered, but only ${sourceCount} independent source(s): not enough to synthesize.`
-        : "Not enough delegates succeeded to synthesize.";
+    const quorum = result.panel.quorum;
+    if (quorum && quorum.status !== "met") {
+      // Never present an unmet or overridden quorum as a normal result.
+      const label = quorum.status === "single_source_override" ? "SINGLE-SOURCE RUN" : "QUORUM UNMET";
+      $("status").textContent = `${label}: ${quorum.summary}`;
+    } else {
+      $("status").textContent = result.panel.synthesizeable
+        ? `${result.panel.successful_count} delegate(s) completed.${sources}${cost ? " Estimated run cost " + cost + "." : ""}`
+        : sameSource
+          ? `${result.panel.successful_count} delegate(s) answered, but only ${sourceCount} independent source(s): not enough to synthesize.`
+          : "Not enough delegates succeeded to synthesize.";
+    }
     await loadHistory();
   } catch (error) {
     $("status").textContent = error.message;

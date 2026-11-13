@@ -20,6 +20,7 @@ from .models import (
     ProviderDescriptor,
     ProviderTestResult,
     RequestAnalysis,
+    SelectionTrace,
     PanelRequest,
     PanelResult,
     Workspace,
@@ -30,8 +31,10 @@ from .models import (
 from .orchestrator import Orchestrator
 from .providers.fake import FakeProvider
 from .providers.factory import build_identities, build_providers
+from .providers.unavailable import UnavailableProvider
+from .quorum import QuorumUnmet, plan_delegates
 from .security import LoopbackGuardMiddleware
-from .selection import select_delegates
+from .selection import rank_candidates, select_delegates
 from .sources import sharing_config
 from .store import WorkspaceStore
 
@@ -121,6 +124,30 @@ def create_app(
     }
     identities = build_identities(config.providers)
     orchestrator = Orchestrator(providers, identities)
+
+    def is_eligible(name: str) -> bool:
+        provider = providers.get(name)
+        return provider is not None and not isinstance(provider, UnavailableProvider)
+
+    def ineligible_reason(name: str) -> str:
+        provider = providers.get(name)
+        if provider is None:
+            return "not configured"
+        if isinstance(provider, UnavailableProvider):
+            return provider.error
+        return "unavailable"
+
+    def plan_or_422(**kwargs):
+        """Plan the delegates, or stop with a structured "quorum unmet" before any call."""
+        try:
+            return plan_delegates(
+                is_eligible=is_eligible,
+                ineligible_reason=ineligible_reason,
+                identities=identities,
+                **kwargs,
+            )
+        except QuorumUnmet as exc:
+            raise HTTPException(status_code=422, detail=exc.detail) from exc
 
     def workspace_warnings(delegates: list[str]) -> list[str]:
         return [
@@ -245,7 +272,8 @@ def create_app(
         request: DeliberationRequest,
         response: Response,
     ) -> DeliberationResult:
-        _validate_quorum(request.minimum_successes, len(request.delegates))
+        # No bare count check here: plan_delegates() decides whether the quorum is reachable
+        # and answers with a structured "quorum unmet" (or a labelled single-source run).
         _validate_participants(
             delegates=request.delegates,
             roles=request.roles,
@@ -255,6 +283,26 @@ def create_app(
             arbiter_fallbacks=request.arbiter_fallbacks,
             provider_names=orchestrator.provider_names,
         )
+        plan = plan_or_422(
+            selected=request.delegates,
+            pool=request.delegates,
+            ranked_extra=[],
+            required=request.minimum_successes,
+            allow_single_source=request.allow_single_source,
+        )
+        if plan.delegates != request.delegates:
+            # Single-source run: one source answers once, so only one delegate is called.
+            request = request.model_copy(
+                update={
+                    "delegates": plan.delegates,
+                    "roles": {k: v for k, v in request.roles.items() if k in plan.delegates},
+                    "selection": SelectionTrace(
+                        required_sources=request.minimum_successes,
+                        expected_sources=plan.expected_sources,
+                        single_source=True,
+                    ),
+                }
+            )
         return await _deliberate_and_store(
             request=request, workspace_id=None, response=response
         )
@@ -346,14 +394,50 @@ def create_app(
         if workspace is None:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        delegates = workspace.delegates
+        required = workspace.minimum_successes  # the configured quorum is never lowered
+        trace: SelectionTrace | None = None
         if workspace.auto_select_delegates:
+            analysis = analyze_request(request.question)
             selection = select_delegates(
-                analysis=analyze_request(request.question),
+                analysis=analysis,
                 candidates=workspace.delegates,
                 descriptors=descriptors,
             )
-            delegates = selection.selected
+            plan = plan_or_422(
+                selected=selection.selected,
+                pool=workspace.delegates,
+                ranked_extra=rank_candidates(
+                    analysis=analysis,
+                    candidates=[n for n in workspace.delegates if is_eligible(n)],
+                    descriptors=descriptors,
+                ),
+                required=required,
+                allow_single_source=workspace.allow_single_source,
+                drop_ineligible=True,
+            )
+            trace = SelectionTrace(
+                auto_selected=selection.selected,
+                topped_up=plan.topped_up,
+                skipped_unavailable=[n for n in selection.selected if not is_eligible(n)],
+                required_sources=required,
+                expected_sources=plan.expected_sources,
+                single_source=plan.single_source,
+            )
+        else:
+            plan = plan_or_422(
+                selected=workspace.delegates,
+                pool=workspace.delegates,
+                ranked_extra=[],
+                required=required,
+                allow_single_source=workspace.allow_single_source,
+            )
+            if plan.single_source:
+                trace = SelectionTrace(
+                    required_sources=required,
+                    expected_sources=plan.expected_sources,
+                    single_source=True,
+                )
+        delegates = plan.delegates
 
         deliberation = DeliberationRequest(
             question=request.question,
@@ -364,7 +448,9 @@ def create_app(
             critic_fallbacks=workspace.critic_fallbacks,
             roles={name: workspace.roles[name] for name in delegates if name in workspace.roles},
             workspace_context=workspace.context,
-            minimum_successes=min(workspace.minimum_successes, len(delegates)),
+            minimum_successes=required,
+            allow_single_source=workspace.allow_single_source,
+            selection=trace,
             timeout_seconds=request.timeout_seconds,
             critic_timeout_seconds=request.critic_timeout_seconds,
             arbiter_timeout_seconds=request.arbiter_timeout_seconds,
