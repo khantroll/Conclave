@@ -98,7 +98,7 @@ def test_the_critic_default_statement_matches_the_benchmark_results_file():
             assert f"{n} of 144" in results and f"{n} of 144" in readme, judge  # incomplete judges say how incomplete
     assert "no default" in readme.lower()
     if complete:  # a decision exists for these judges; the README must name it and its limit
-        assert "144 of 144" in results and "one judge" in results.lower()
+        assert "144 of 144" in results and "judge models" in results.lower()
         assert "default off" in results.lower() and "default off" in readme.lower()
     else:
         assert "no decision" in results.lower()

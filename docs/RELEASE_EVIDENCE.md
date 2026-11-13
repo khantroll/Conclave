@@ -25,7 +25,7 @@ A merged PR is not counted as proof: each row names a test that would fail witho
 
 ## Judge benchmark
 
-**Complete on one judge** (`qwen/qwen3.7-flash`, 144 of 144 trials, about $0.09): Arbiter alone 120/144, Critic then Arbiter 118/144, a gain of -1.4 points, so "default off" by the fixed rule. It is a one-model screening result. Both arms scored 0 of 12 on acknowledging a missing delegate and 1 of 24 on noticing duplicate sources: a finding about the Arbiter's prompt. groq (free tier): 6 of 144, incomplete, no decision. Outages are in `bench/judge/operational.jsonl`, apart from the scores. Details: `bench/judge/RESULTS.md`. There is still no Critic default.
+**Complete on two judges.** `qwen/qwen3.7-flash` (144 of 144 trials, about $0.09): Arbiter alone 120/144, Critic then Arbiter 118/144, -1.4 points. `deepseek/deepseek-chat-v3-0324` (144 of 144, about $0.11): 116/144 and 117/144, +0.7 points. Both "default off" by the fixed rule, as small-model screening results. Both judges, in both arms, scored 0 of 12 on acknowledging a missing delegate and almost never noticed duplicate sources: a finding about the Arbiter's prompt. groq (free tier): 6 of 144, incomplete, no decision. Outages are in `bench/judge/operational.jsonl`, apart from the scores. Details: `bench/judge/RESULTS.md`. There is still no Critic default.
 
 ## Acceptance (real providers, free keys, a copy of the real database)
 
@@ -41,7 +41,7 @@ Three kinds of cost, never mixed:
 | Area | State |
 |---|---|
 | P0, P1-1 to P1-12, P1-14 | Implemented and merged; covered by the suite and the mock benchmark. |
-| P1-13 Critic default | Interim explicit-choice rule implemented; benchmark run to completion on one judge (Critic arm -1.4 points, "default off"); a second judge is needed. **Partial.** |
+| P1-13 Critic default | Interim explicit-choice rule implemented; benchmark run to completion on two small judges (both "default off"); a stronger judge and the prompt change are still to do. **Partial.** |
 | P1-15 real-provider acceptance | Partly passed (above). Billing reconciliation **blocked** on provider dashboards. |
 | Panel versus one model | Not measured. **Deferred** (P2-1). |
 | Spending ceiling, shared stage deadline, run-progress polling, router evaluation | **Deferred** (P2). |
