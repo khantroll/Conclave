@@ -154,18 +154,30 @@ Once that fixed three-model path is proven, enable automatic delegate selection 
 Model availability can change. If a provider Test button reports a model-not-found error, update only that provider's `model` value in `conclave.json`, restart Conclave, and test again.
 
 
-## Transient retry policy
+## Error kinds and the retry policy
 
-OpenAI-compatible providers now retry a small set of transient HTTP failures automatically:
+Every failed provider call is classified, and the kind is saved as `error_kind` on the result (and shown in the console as, for example, `failed (auth)`):
 
-- 429 Too Many Requests
-- 502 Bad Gateway
-- 503 Service Unavailable
-- 504 Gateway Timeout
+| kind | what it is | retried |
+| --- | --- | --- |
+| `auth` | HTTP 401 or 403 | no |
+| `quota` | a 429 whose body contains `insufficient_quota`, `quota` or `billing`, or whose `Retry-After` is over 60 seconds | no |
+| `rate_limit` | any other 429 | yes |
+| `capacity` | HTTP 502, 503 or 504 | yes |
+| `bad_request` | any other 4xx | no |
+| `server_error` | any other 5xx (for example 500) | no |
+| `transport` | the request failed on the way | only a refused or unreachable connection |
+| `malformed` | the reply was not a usable chat completion | no |
+| `empty_response` | the reply held no text | no |
+| `timeout` | the stage timeout expired | no |
 
-The defaults are two retries with exponential backoff starting at one second. Numeric and HTTP-date `Retry-After` values are supported with a ten-second cap; past dates become zero delay, and invalid or non-finite values use exponential backoff. The cap can cause a retry earlier than a provider's requested wait, so long rate limits can still exhaust retries. Authentication, authorization, model-not-found, and other non-transient errors are not retried.
+Only `rate_limit`, `capacity` and a refused connection are ever sent twice. A quota or a bad key fails at once instead of spending retries (and, for a quota, time). A refused connection never reached the provider, so a repeat cannot double-bill; any other transport failure may have been accepted, so it is not replayed.
 
-Completed failures retain the number of HTTP attempts in saved results and provider connectivity tests, including transport or malformed-response failures after a transient retry. Transport failures are not automatically replayed because the provider may already have accepted the request. Timeout results still use the existing default attempt count; they do not report an exact count of interrupted HTTP attempts.
+The defaults are two retries with exponential backoff starting at one second. Numeric and HTTP-date `Retry-After` values are supported with a ten-second cap on the wait between retries; past dates become zero delay, and invalid or non-finite values use exponential backoff. The cap can cause a retry earlier than a provider's requested wait, so long rate limits can still exhaust retries (a wait over 60 seconds is treated as a quota and not retried at all).
+
+Completed failures retain the number of HTTP attempts in saved results and provider connectivity tests, including transport or malformed-response failures after a transient retry. Timeout results still use the existing default attempt count; they do not report an exact count of interrupted HTTP attempts. Error text and kinds are never put in a Critic or Arbiter prompt.
+
+When a Critic or Arbiter fallback answers (or also fails), the final result carries `prior_attempts`: for each earlier provider that failed, its name, status, error kind, latency and attempt count, oldest first. The fallback no longer erases the primary's failure.
 
 Per-provider settings may override the defaults:
 

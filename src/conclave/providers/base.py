@@ -27,10 +27,34 @@ class Provider(ABC):
         raise NotImplementedError
 
 
+# What a failed call was, as far as retrying is concerned:
+#   auth          401 or 403: the key or access is wrong. Retrying cannot help.
+#   quota         a 429 that mentions quota or billing, or asks to wait over a minute.
+#   rate_limit    any other 429. Retried.
+#   capacity      502, 503 or 504. Retried.
+#   server_error  any other 5xx.
+#   bad_request   any other 4xx.
+#   transport     the request failed on the way (a refused connection is retried, the rest not).
+#   malformed     the reply was not a usable chat completion.
+#   empty_response  set by the orchestrator when the reply held no text.
+RETRYABLE_KINDS = frozenset({"rate_limit", "capacity"})
+# A Retry-After longer than this means "come back later", which is a quota, not a rate limit.
+QUOTA_RETRY_AFTER_SECONDS = 60.0
+
+
 class ProviderError(RuntimeError):
     """A failed provider call with request-local attempt telemetry."""
 
-    def __init__(self, message: str, *, attempts: int = 1) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        attempts: int = 1,
+        kind: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.attempts = attempts
+        self.kind = kind
+        self.status_code = status_code
 

@@ -20,6 +20,16 @@ class DelegateRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
 
 
+class PriorAttempt(BaseModel):
+    """An earlier failed attempt at a stage that a fallback then answered (or also failed)."""
+
+    name: str
+    status: DelegateStatus
+    error_kind: str | None = None
+    latency_ms: int | None = None
+    attempts: int = Field(default=1, ge=1)
+
+
 class DelegateResult(BaseModel):
     name: str
     status: DelegateStatus
@@ -32,6 +42,8 @@ class DelegateResult(BaseModel):
     usage: dict[str, Any] = Field(default_factory=dict)
     estimated_cost_usd: float | None = None
     attempts: int = Field(default=1, ge=1)
+    # Earlier failures of this stage's primary (and earlier fallbacks), oldest first.
+    prior_attempts: list[PriorAttempt] = Field(default_factory=list)
 
 
 class QuorumReport(BaseModel):
@@ -280,6 +292,7 @@ class ProviderTestResult(BaseModel):
     model: str | None = None
     latency_ms: int | None = None
     error: str | None = None
+    error_kind: str | None = None
     attempts: int = Field(default=1, ge=1)
 
 

@@ -9,7 +9,13 @@ from typing import Any
 
 import httpx
 
-from .base import Provider, ProviderError, ProviderResponse
+from .base import (
+    QUOTA_RETRY_AFTER_SECONDS,
+    RETRYABLE_KINDS,
+    Provider,
+    ProviderError,
+    ProviderResponse,
+)
 
 
 _SENSITIVE_HEADER = re.compile(r"auth|key|token|secret|cookie|password|credential", re.IGNORECASE)
@@ -69,19 +75,33 @@ class OpenAICompatibleProvider(Provider):
         for attempt in range(1, max_attempts + 1):
             try:
                 response = await self._post(headers=headers, payload=payload)
+            except httpx.ConnectError as exc:
+                # A refused or unreachable connection never reached the provider, so it is
+                # safe to try again: nothing can have been accepted or billed.
+                if attempt < max_attempts:
+                    await asyncio.sleep(self._backoff(attempt))
+                    continue
+                raise ProviderError(
+                    self._redact(str(exc).strip())
+                    or f"{type(exc).__name__}: provider request failed",
+                    attempts=attempt,
+                    kind="transport",
+                ) from exc
             except httpx.RequestError as exc:
-                # A transport failure may occur after a request was accepted.
+                # Any other transport failure may occur after a request was accepted.
                 # Preserve attempts without automatically replaying that request.
                 raise ProviderError(
                     self._redact(str(exc).strip())
                     or f"{type(exc).__name__}: provider request failed",
                     attempts=attempt,
+                    kind="transport",
                 ) from exc
 
             if not response.is_error:
                 break
 
-            if response.status_code not in {429, 502, 503, 504} or attempt >= max_attempts:
+            kind = self._classify(response)
+            if kind not in RETRYABLE_KINDS or attempt >= max_attempts:
                 body = self._redact(response.text.strip().replace("\n", " "))
                 if len(body) > 500:
                     body = f"{body[:500]}..."
@@ -94,6 +114,8 @@ class OpenAICompatibleProvider(Provider):
                         f"{body or response.reason_phrase}"
                     ),
                     attempts=attempt,
+                    kind=kind,
+                    status_code=response.status_code,
                 )
 
             await asyncio.sleep(self._retry_delay(response, attempt))
@@ -102,17 +124,21 @@ class OpenAICompatibleProvider(Provider):
         try:
             data: dict[str, Any] = response.json()
         except ValueError as exc:
-            raise ProviderError("Provider returned invalid JSON", attempts=attempt) from exc
+            raise ProviderError(
+                "Provider returned invalid JSON", attempts=attempt, kind="malformed"
+            ) from exc
         try:
             text = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise ProviderError(
-                "Provider returned no chat-completion content", attempts=attempt
+                "Provider returned no chat-completion content", attempts=attempt, kind="malformed"
             ) from exc
 
         if not isinstance(text, str):
             raise ProviderError(
-                "Provider returned non-text chat-completion content", attempts=attempt
+                "Provider returned non-text chat-completion content",
+                attempts=attempt,
+                kind="malformed",
             )
 
         usage = data.get("usage")
@@ -165,22 +191,52 @@ class OpenAICompatibleProvider(Provider):
             text = text.replace(secret, "[redacted]")
         return text
 
-    def _retry_delay(self, response: httpx.Response, attempt: int) -> float:
+    @staticmethod
+    def _retry_after_seconds(response: httpx.Response) -> float | None:
+        """The Retry-After header in seconds, or None when absent or unreadable."""
         retry_after = response.headers.get("Retry-After")
-        if retry_after:
+        if not retry_after:
+            return None
+        try:
+            delay = float(retry_after)
+        except ValueError:
             try:
-                delay = float(retry_after)
-            except ValueError:
-                try:
-                    retry_at = parsedate_to_datetime(retry_after)
-                    if retry_at.tzinfo is None:
-                        retry_at = retry_at.replace(tzinfo=timezone.utc)
-                    delay = (retry_at - datetime.now(timezone.utc)).total_seconds()
-                except (ValueError, TypeError, OverflowError):
-                    delay = math.nan
-            if math.isfinite(delay):
-                return min(max(delay, 0.0), 10.0)
+                retry_at = parsedate_to_datetime(retry_after)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                delay = (retry_at - datetime.now(timezone.utc)).total_seconds()
+            except (ValueError, TypeError, OverflowError):
+                return None
+        return delay if math.isfinite(delay) else None
+
+    @staticmethod
+    def _classify(response: httpx.Response) -> str:
+        """The error kind of a failed HTTP response (see ``providers.base``)."""
+        status = response.status_code
+        if status in {401, 403}:
+            return "auth"
+        if status == 429:
+            body = response.text.lower()
+            if any(word in body for word in ("insufficient_quota", "quota", "billing")):
+                return "quota"
+            wait = OpenAICompatibleProvider._retry_after_seconds(response)
+            if wait is not None and wait > QUOTA_RETRY_AFTER_SECONDS:
+                return "quota"
+            return "rate_limit"
+        if status in {502, 503, 504}:
+            return "capacity"
+        if 400 <= status < 500:
+            return "bad_request"
+        return "server_error"
+
+    def _backoff(self, attempt: int) -> float:
         return min(self.retry_backoff_seconds * (2 ** (attempt - 1)), 10.0)
+
+    def _retry_delay(self, response: httpx.Response, attempt: int) -> float:
+        delay = self._retry_after_seconds(response)
+        if delay is not None:
+            return min(max(delay, 0.0), 10.0)
+        return self._backoff(attempt)
 
     def _estimate_cost(self, usage: dict[str, Any]) -> float | None:
         if self.input_cost_per_million is None and self.output_cost_per_million is None:

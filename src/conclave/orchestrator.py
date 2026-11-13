@@ -12,6 +12,7 @@ from .models import (
     DelegateStatus,
     PanelRequest,
     PanelResult,
+    PriorAttempt,
     SingleSourceAnswer,
 )
 from .prompts import (
@@ -366,6 +367,7 @@ class Orchestrator:
     ) -> DelegateResult:
         providers = [primary, *fallbacks]
         last_result: DelegateResult | None = None
+        prior: list[PriorAttempt] = []
         for name in providers:
             result = await self._run_delegate(
                 DelegateRequest(
@@ -374,9 +376,19 @@ class Orchestrator:
                     timeout_seconds=timeout_seconds,
                 )
             )
+            result = result.model_copy(update={"prior_attempts": list(prior)})
             if result.status == DelegateStatus.SUCCEEDED:
                 return result
             last_result = result
+            prior.append(
+                PriorAttempt(
+                    name=result.name,
+                    status=result.status,
+                    error_kind=result.error_kind,
+                    latency_ms=result.latency_ms,
+                    attempts=result.attempts,
+                )
+            )
         assert last_result is not None
         return last_result
 
@@ -392,19 +404,19 @@ class Orchestrator:
 
         started = perf_counter()
         try:
-            response = await asyncio.wait_for(
-                provider.ask(delegate.prompt),
-                timeout=delegate.timeout_seconds,
-            )
-        except TimeoutError:
-            return DelegateResult(
-                name=delegate.name,
-                status=DelegateStatus.TIMED_OUT,
-                prompt=delegate.prompt,
-                error=f"Timed out after {delegate.timeout_seconds:g}s",
-                latency_ms=_elapsed_ms(started),
-            )
+            async with asyncio.timeout(delegate.timeout_seconds) as deadline:
+                response = await provider.ask(delegate.prompt)
         except Exception as exc:  # provider errors become data, not panel failures
+            if isinstance(exc, TimeoutError) and deadline.expired():
+                return DelegateResult(
+                    name=delegate.name,
+                    status=DelegateStatus.TIMED_OUT,
+                    prompt=delegate.prompt,
+                    error=f"Timed out after {delegate.timeout_seconds:g}s",
+                    error_kind="timeout",
+                    latency_ms=_elapsed_ms(started),
+                )
+            # A TimeoutError the provider raised on its own is a failure, not our deadline.
             message = str(exc).strip()
             if not message:
                 message = f"{type(exc).__name__}: provider call failed without an error message"
@@ -413,6 +425,7 @@ class Orchestrator:
                 status=DelegateStatus.FAILED,
                 prompt=delegate.prompt,
                 error=message,
+                error_kind=exc.kind if isinstance(exc, ProviderError) else None,
                 attempts=exc.attempts if isinstance(exc, ProviderError) else 1,
                 latency_ms=_elapsed_ms(started),
             )
