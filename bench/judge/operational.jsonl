@@ -1,1 +1,2 @@
 {"at": "2026-11-13", "judge": "groq", "case": "minority-01-session-storage", "arm": "critic", "repeat": 1, "reason": "groq: quota (the free tier was exhausted after 3 trials; recorded by hand from the run log, which printed \"stopped, not recorded: groq: quota\")"}
+{"at": "2026-11-13T18:54:42.062037+00:00", "judge": "groq", "case": "minority-02-currency-float", "arm": "arbiter", "repeat": 0, "reason": "groq: quota"}

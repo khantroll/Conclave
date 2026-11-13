@@ -5,9 +5,9 @@
 | | |
 |---|---|
 | Attempted | 2026-11-13, judge `groq` (`openai/gpt-oss-120b`, free tier, prices configured as 0) |
-| Completed | **3 of 144 trials** (the plan is 24 cases x 2 arms x 3 repeats, one judge) |
-| Scored | `minority-01-session-storage` only: arbiter repeat 0 and 1, critic repeat 0. All 6 checks passed (arbiter 4/4, critic 2/2). |
-| Stopped by | groq returned a quota error before `minority-01-session-storage`, critic repeat 1. This is an **operational outcome**, recorded in `operational.jsonl`, not a poor answer, and it is not scored. |
+| Completed | **6 of 144 trials** (the plan is 24 cases x 2 arms x 3 repeats, one judge) |
+| Scored | `minority-01-session-storage` only, all 3 repeats in both arms. All 12 checks passed (arbiter 6/6, critic 6/6): groq kept the distinctive minority claim ("HttpOnly") every time with and without a Critic. One class, one case: no basis for a decision. |
+| Stopped by | groq returned a quota error again before `minority-02-currency-float`, arbiter repeat 0. This is an **operational outcome**, recorded in `operational.jsonl` (two so far), not a poor answer, and is not scored. |
 | Decision | **None.** Three trials in one class cannot establish a Critic default, and the decision rule is not applied to an incomplete set. |
 
 There is still **no Critic default**: a workspace must state its choice.
