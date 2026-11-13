@@ -373,3 +373,16 @@ async def test_a_delegate_retry_rebuilds_the_judges_trails():
     retried = await orchestrator.retry_delegate(request=request, prior_result=first, delegate_name="a")
     assert retried.panel.delegates[0].status == DelegateStatus.SUCCEEDED
     assert retried.arbiter.prior_attempts == []
+
+
+async def test_content_given_as_a_list_of_text_parts_is_the_answer():
+    reply = httpx.Response(200, json={"choices": [{"message": {"content": [{"type": "text", "text": "Hello "}, {"type": "text", "text": "there"}]}}]})
+    assert (await _provider(Counter(reply)).ask("hi")).text == "Hello there"
+
+
+async def test_a_null_answer_that_ran_out_of_budget_says_so():
+    reply = httpx.Response(200, json={"choices": [{"finish_reason": "length", "message": {"content": None, "reasoning": "thinking..."}}]})
+    error = await _fail(Counter(reply))
+    assert error.kind == "malformed" and "max_output_tokens" in str(error) and "thinking..." not in str(error)
+    plain = await _fail(Counter(httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": None}}]})))
+    assert "no text answer" in str(plain) and "max_output_tokens" not in str(plain)

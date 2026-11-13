@@ -172,17 +172,32 @@ class OpenAICompatibleProvider(Provider):
             ) from exc
         self._finish_ok(record, response, data)
         try:
-            text = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            text = choice["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise ProviderError(
                 "Provider returned no chat-completion content", attempts=attempt, kind="malformed"
             ) from exc
 
+        if isinstance(text, list):
+            # Some gateways return content as a list of parts; the text parts are the answer.
+            parts = [
+                part.get("text") if isinstance(part, dict) else part
+                for part in text
+                if isinstance(part, str) or (isinstance(part, dict) and part.get("type") in (None, "text"))
+            ]
+            if parts and all(isinstance(part, str) for part in parts):
+                text = "".join(parts)
         if not isinstance(text, str):
+            finish = choice.get("finish_reason") if isinstance(choice, dict) else None
+            hint = (
+                " (finish_reason 'length': the model may have used its output budget thinking; "
+                "raise max_output_tokens)"
+                if finish == "length"
+                else ""
+            )
             raise ProviderError(
-                "Provider returned non-text chat-completion content",
-                attempts=attempt,
-                kind="malformed",
+                f"Provider returned no text answer{hint}", attempts=attempt, kind="malformed"
             )
 
         usage = data.get("usage")
