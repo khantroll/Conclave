@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Conclave</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Conclave</h1>
+      <p>Multi-model deliberation without being the human message bus.</p>
+    </div>
+    <span id="health" class="badge">connecting…</span>
+  </header>
+
+  <main>
+    <aside>
+      <section class="panel">
+        <h2>Workspace</h2>
+        <label for="workspaceSelect">Active workspace</label>
+        <select id="workspaceSelect"></select>
+        <div id="workspaceSummary" class="workspace-summary muted-block"></div>
+        <div class="row">
+          <button id="refreshWorkspaces" class="secondary">Refresh</button>
+          <button id="editWorkspace" class="secondary">Edit</button>
+          <button id="deleteWorkspace" class="danger">Delete</button>
+        </div>
+      </section>
+
+      <details id="workspaceFormDetails" class="panel">
+        <summary id="workspaceFormSummary">Create workspace</summary>
+        <form id="workspaceForm">
+          <label>Name<input id="workspaceName" required></label>
+          <label>Description<input id="workspaceDescription"></label>
+          <label>Context<textarea id="workspaceContext" rows="5"></textarea></label>
+          <button id="insertContextTemplate" type="button" class="secondary">Insert context template</button>
+          <label>Delegates <small>comma-separated provider names</small>
+            <input id="workspaceDelegates" placeholder="openai, claude, gemini" required>
+          </label>
+          <label>Delegate roles <small>one per line: provider = role/instructions</small>
+            <textarea id="workspaceRoles" rows="5" placeholder="openai = Architect\nclaude = Skeptical reviewer\ngemini = Researcher"></textarea>
+          </label>
+          <label>Critic<input id="workspaceCritic" placeholder="mistral"></label>
+          <label>Critic fallbacks <small>comma-separated; tried in order if the primary Critic fails</small>
+            <input id="workspaceCriticFallbacks" placeholder="openrouter-free, groq">
+          </label>
+          <label>Arbiter<input id="workspaceArbiter" placeholder="gemini" required></label>
+          <label>Arbiter fallbacks <small>comma-separated; tried in order if the primary Arbiter fails</small>
+            <input id="workspaceArbiterFallbacks" placeholder="groq, openrouter-free">
+          </label>
+          <label>Minimum successes<input id="workspaceQuorum" type="number" min="1" value="1"></label>
+          <label class="checkbox-row"><input id="workspaceAutoSelect" type="checkbox"> Automatically choose a subset of delegates based on the question</label>
+          <div class="row">
+            <button id="workspaceSubmit" type="submit">Create</button>
+            <button id="workspaceCancel" type="button" class="secondary hidden">Cancel edit</button>
+          </div>
+        </form>
+      </details>
+
+      <section class="panel">
+        <div class="row">
+          <h2>Providers</h2>
+          <span id="providerMode" class="badge muted"></span>
+        </div>
+        <small>Connection tests send a tiny real request for configured API providers.</small>
+        <button id="testAllProviders" class="secondary">Test all configured</button>
+        <div id="providerNotice" class="provider-notice"></div>
+        <div id="providers" class="chips"></div>
+        <div id="providerTestDetail" class="provider-test-detail"></div>
+        <details class="provider-setup">
+          <summary>Set up real providers</summary>
+          <ol>
+            <li>Copy <code>conclave.example.json</code> to <code>conclave.json</code>.</li>
+            <li>Copy <code>.env.example</code> to <code>.env</code>.</li>
+            <li>Edit provider endpoints/models in <code>conclave.json</code> and put API keys only in <code>.env</code>.</li>
+            <li>Restart Conclave, then use the provider Test buttons.</li>
+          </ol>
+        </details>
+      </section>
+    </aside>
+
+    <section class="content">
+      <section class="panel ask">
+        <div class="row">
+          <h2>Ask the Conclave</h2>
+          <span id="complexity" class="badge muted"></span>
+        </div>
+        <textarea id="question" rows="7" placeholder="What do you want the panel to consider?"></textarea>
+        <div class="row">
+          <button id="analyzeButton" class="secondary">Analyze request</button>
+          <button id="runButton">Deliberate</button>
+        </div>
+        <p id="status" class="status"></p>
+      </section>
+
+      <section id="answerSection" class="panel hidden">
+        <div class="row">
+          <h2>Final synthesis</h2>
+          <div class="row">
+            <span id="runId" class="badge muted"></span>
+            <button id="downloadRun" class="secondary hidden">Download run JSON</button>
+          </div>
+        </div>
+        <div id="arbiterMeta" class="meta"></div>
+        <pre id="arbiterAnswer"></pre>
+        <button id="retryArbiter" class="secondary hidden">Retry Arbiter only</button>
+        <details id="arbiterPromptDetails" class="prompt-details hidden">
+          <summary>Show exact Arbiter prompt</summary>
+          <pre id="arbiterPrompt"></pre>
+        </details>
+      </section>
+
+      <section id="criticSection" class="panel hidden">
+        <h2>Critic audit</h2>
+        <div id="criticMeta" class="meta"></div>
+        <pre id="criticAnswer"></pre>
+        <button id="retryCritic" class="secondary hidden">Retry Critic + Arbiter</button>
+        <details id="criticPromptDetails" class="prompt-details hidden">
+          <summary>Show exact Critic prompt</summary>
+          <pre id="criticPrompt"></pre>
+        </details>
+      </section>
+
+      <section id="delegatesSection" class="panel hidden">
+        <h2>Delegates</h2>
+        <div id="delegateCards"></div>
+      </section>
+
+      <section class="panel">
+        <div class="row">
+          <h2>Workspace history</h2>
+          <button id="refreshHistory" class="secondary">Refresh</button>
+        </div>
+        <div id="history"></div>
+      </section>
+
+      <details class="panel">
+        <summary>All run history</summary>
+        <div id="allHistory"></div>
+      </details>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

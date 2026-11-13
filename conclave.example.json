@@ -1,0 +1,48 @@
+{
+  "providers": [
+    {
+      "name": "gemini",
+      "kind": "openai_compatible",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "model": "gemini-3.6-flash",
+      "api_key_env": "GEMINI_API_KEY",
+      "capabilities": ["general", "reasoning", "research"],
+      "priority": 20
+    },
+    {
+      "name": "mistral",
+      "kind": "openai_compatible",
+      "base_url": "https://api.mistral.ai/v1",
+      "model": "mistral-small-latest",
+      "api_key_env": "MISTRAL_API_KEY",
+      "capabilities": ["general", "critical", "reasoning"],
+      "priority": 25
+    },
+    {
+      "name": "groq",
+      "kind": "openai_compatible",
+      "base_url": "https://api.groq.com/openai/v1",
+      "model": "openai/gpt-oss-120b",
+      "api_key_env": "GROQ_API_KEY",
+      "capabilities": ["general", "reasoning", "fast"],
+      "priority": 30
+    },
+    {
+      "name": "openrouter-free",
+      "kind": "openai_compatible",
+      "base_url": "https://openrouter.ai/api/v1",
+      "model": "openrouter/free",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "capabilities": ["general"],
+      "priority": 80
+    },
+    {
+      "name": "local",
+      "kind": "openai_compatible",
+      "base_url": "http://127.0.0.1:1234/v1",
+      "model": "local-model",
+      "capabilities": ["general", "privacy", "fast"],
+      "priority": 90
+    }
+  ]
+}

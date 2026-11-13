@@ -84,13 +84,14 @@ The MVP is successful if it can demonstrate all of the following:
 - A workspace can materially reduce repeated context entry.
 - Running Conclave feels easier than manually copying responses among several AI chats.
 
-## First implementation questions
+## Decisions made for the pre-alpha
 
-Before coding the provider layer, decide:
+- **Provider strategy:** Conclave owns the provider abstraction; LiteLLM/OpenRouter may be used behind the generic OpenAI-compatible adapter.
+- **Request analysis:** deterministic/rule-based first, so routing does not require an extra model call.
+- **Prompt visibility:** exact prompts and untouched raw responses are persisted.
+- **Critic/Arbiter:** configured per workspace.
+- **Secrets:** API keys are referenced through environment variables and are not stored in workspace data.
+- **Persistence:** SQLite stores workspaces, request snapshots, and run results.
+- **Retries:** Delegate, Critic, and Arbiter retries are isolated so successful upstream work does not need to be repeated.
 
-- LiteLLM gateway versus direct provider SDKs.
-- Whether the request analyzer is rule-based, LLM-based, or hybrid.
-- Whether normalized delegate responses are requested as structured output or extracted after the fact.
-- Which model acts as the default Critic and Arbiter.
-- How secrets are stored locally.
-- How workspace context is bounded to prevent uncontrolled prompt growth.
+Semantic claim/source normalization is intentionally deferred until real-provider testing demonstrates a clear need.

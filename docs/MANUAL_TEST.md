@@ -1,0 +1,109 @@
+# Manual Test Checklist
+
+This checklist begins only after CI is green.
+
+## Phase 1 — no real API keys required
+
+1. Create a Python virtual environment and install the project:
+   ```bash
+   pip install -e ".[dev]"
+   ```
+2. Start Conclave:
+   ```bash
+   uvicorn conclave.api:app --reload
+   ```
+3. Open `http://127.0.0.1:8000/`.
+4. Confirm the header reports Conclave online and shows the built-in demo providers.
+5. Create a workspace using:
+   - Delegates: `demo-a, demo-b`
+   - Critic: `demo-critic`
+   - Arbiter: `demo-arbiter`
+   - Role examples:
+     - `demo-a = Architect`
+     - `demo-b = Skeptical reviewer`
+6. Ask a simple question and confirm:
+   - a run is saved;
+   - raw Delegate responses are visible;
+   - exact Delegate prompts are inspectable;
+   - Critic and Arbiter outputs are shown;
+   - Critic and Arbiter prompts are inspectable;
+   - run history reloads correctly after refreshing the browser;
+   - **Download run JSON** exports the saved request/result snapshot.
+7. Enable automatic Delegate selection in the workspace.
+8. Analyze `What is RAID 10?` and confirm the preview recommends a one-model panel.
+9. Ask a more complex architecture/decision question and confirm the preview grows the panel appropriately.
+10. Edit the workspace, save it, reload the page, and confirm the changes persist.
+11. Delete a disposable workspace and confirm it disappears.
+12. Open **All run history** and confirm runs from a deleted workspace remain available as detached history.
+
+## Phase 2 — failure isolation
+
+The automated suite covers provider failure and timeout behavior, but a useful UI smoke test is:
+
+1. Add a deliberately invalid provider to a temporary local config or point a test provider at a non-listening local endpoint.
+2. Use it in a workspace alongside a working provider.
+3. Confirm the failed provider is shown as failed while successful Delegate output remains available.
+4. Confirm the run can still synthesize when quorum is satisfied.
+5. Click **Retry this delegate** and confirm successful Delegates are not rerun.
+6. Temporarily make the Critic fail, then confirm **Retry Critic + Arbiter** does not rerun Delegates.
+7. Temporarily make the Arbiter fail, then confirm **Retry Arbiter only** preserves the panel and Critic.
+
+## Phase 3 — real providers
+
+This is the point where human credentials and real API traffic are required.
+
+1. Copy `conclave.example.json` to `conclave.json`.
+2. Configure the exact models/endpoints you want.
+3. Put keys in environment variables; never place keys in `conclave.json`.
+4. Start Conclave and use the per-provider **Test** buttons.
+5. Create a real workspace with at least two different provider families.
+6. Run the same question through:
+   - fixed Delegate mode;
+   - automatic Delegate selection.
+7. Verify:
+   - actual model names returned;
+   - latency;
+   - token usage;
+   - estimated cost when pricing metadata is configured;
+   - prompt visibility;
+   - preserved raw responses;
+   - Critic behavior;
+   - Arbiter behavior;
+   - retry behavior.
+8. Compare the result against manually asking the same providers to decide whether Conclave meaningfully reduces human copy/paste work.
+
+## First real evaluation question
+
+A suitable initial test is the question that motivated Conclave:
+
+> Evaluate whether a personal multi-model AI orchestration portal is worth building versus using existing products. Assess what should be delegated to gateways, what capabilities justify a custom layer, likely failure modes, whether model-specific prompt rewriting adds value, and whether persistent project context materially changes the answer. Be skeptical and preserve meaningful disagreement.
+
+That question is complex enough to exercise routing, independent perspectives, criticism, and synthesis.
+
+
+## Phase 4 — Gemini + Mistral + Groq comparison
+
+1. Copy `conclave.example.json` to `conclave.json`.
+2. Copy `.env.example` to `.env`.
+3. Populate `GEMINI_API_KEY`, `MISTRAL_API_KEY`, and `GROQ_API_KEY` locally. Never commit the values.
+4. Restart Conclave and confirm the provider panel reports three configured providers in addition to the demo providers.
+5. Test `gemini`, `mistral`, and `groq` individually.
+6. Create a fixed workspace with Delegates `gemini, mistral, groq`, Critic `mistral`, Arbiter `gemini`, and minimum successes `2`.
+7. Give each Delegate a distinct role rather than the same instructions.
+8. Run the same substantive decision question used in the demo smoke test.
+9. Compare the three untouched Delegate outputs, Critic audit, and Arbiter result.
+10. Export the run JSON and inspect actual model names, latency, usage, failures, and synthesis quality.
+11. Only after this passes, enable automatic Delegate selection and compare one-, two-, and three-Delegate routing.
+
+
+### Current Phase 4 result
+
+The first real-provider test has now completed successfully with a real final synthesis.
+
+- Groq and OpenRouter produced real Delegate responses.
+- Gemini reached its endpoint but returned transient HTTP 503 high-demand errors.
+- Mistral reached its endpoint but returned HTTP 429 rate-limit errors.
+- With working providers reassigned to the downstream roles, OpenRouter completed the Critic stage and Groq completed the Arbiter stage.
+- Conclave produced a final synthesis from real model outputs.
+
+This validates the core real-provider orchestration path. Continue Phase 4 by stabilizing Gemini/Mistral access, testing transient retry/backoff, and comparing synthesis quality across repeated runs.
