@@ -32,6 +32,11 @@ class ProviderConfig(BaseModel):
     max_output_tokens: int | None = Field(default=None, ge=1, strict=True)
     temperature: float | None = Field(default=None, ge=0, le=2, strict=True)
     max_prompt_chars: int | None = Field(default=None, ge=1, strict=True)
+    # Where this provider states what a call cost, if it does: a dotted path into the JSON reply
+    # (for example "usage.cost") and/or a response header name. Conclave reads an amount only
+    # from a place named here and never guesses.
+    reported_cost_field: str | None = None
+    reported_cost_header: str | None = None
     transient_max_retries: int = Field(default=2, ge=0, le=5)
     retry_backoff_seconds: float = Field(default=1.0, ge=0, le=30)
 

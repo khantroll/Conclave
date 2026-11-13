@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from ..ledger import Attempt, begin_attempt, estimate_cost, read_reported_cost
 from .base import (
     QUOTA_RETRY_AFTER_SECONDS,
     RETRYABLE_KINDS,
@@ -44,6 +45,8 @@ class OpenAICompatibleProvider(Provider):
         max_output_tokens: int | None = None,
         temperature: float | None = None,
         max_prompt_chars: int | None = None,
+        reported_cost_field: str | None = None,
+        reported_cost_header: str | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -58,7 +61,12 @@ class OpenAICompatibleProvider(Provider):
         self.max_output_tokens = max_output_tokens
         self.temperature = temperature
         self.max_prompt_chars = max_prompt_chars
+        self.reported_cost_field = reported_cost_field
+        self.reported_cost_header = reported_cost_header
         self._client = client
+
+    # Each HTTP attempt writes its own call-ledger row (see ``conclave.ledger``).
+    records_calls = True
 
     async def ask(self, prompt: str) -> ProviderResponse:
         messages: list[dict[str, str]] = []
@@ -95,9 +103,17 @@ class OpenAICompatibleProvider(Provider):
         response: httpx.Response | None = None
 
         for attempt in range(1, max_attempts + 1):
+            record = begin_attempt(
+                attempt,
+                price_in=self.input_cost_per_million,
+                price_out=self.output_cost_per_million,
+            )
             try:
                 response = await self._post(headers=headers, payload=payload)
             except httpx.ConnectError as exc:
+                # The connection never reached the provider, so this request cannot be billed.
+                if record is not None:
+                    record.finish(outcome="transport_error", possibly_billed=False)
                 # A refused or unreachable connection never reached the provider, so it is
                 # safe to try again: nothing can have been accepted or billed.
                 if attempt < max_attempts:
@@ -112,6 +128,8 @@ class OpenAICompatibleProvider(Provider):
             except httpx.RequestError as exc:
                 # Any other transport failure may occur after a request was accepted.
                 # Preserve attempts without automatically replaying that request.
+                if record is not None:
+                    record.finish(outcome="transport_error")
                 raise ProviderError(
                     self._redact(str(exc).strip())
                     or f"{type(exc).__name__}: provider request failed",
@@ -122,6 +140,8 @@ class OpenAICompatibleProvider(Provider):
             if not response.is_error:
                 break
 
+            if record is not None:
+                record.finish(outcome="http_error", http_status=response.status_code)
             kind = self._classify(response)
             if kind not in RETRYABLE_KINDS or attempt >= max_attempts:
                 body = self._redact(response.text.strip().replace("\n", " "))
@@ -146,9 +166,11 @@ class OpenAICompatibleProvider(Provider):
         try:
             data: dict[str, Any] = response.json()
         except ValueError as exc:
+            self._finish_ok(record, response, None)
             raise ProviderError(
                 "Provider returned invalid JSON", attempts=attempt, kind="malformed"
             ) from exc
+        self._finish_ok(record, response, data)
         try:
             text = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -171,6 +193,30 @@ class OpenAICompatibleProvider(Provider):
             usage=normalized_usage,
             estimated_cost_usd=self._estimate_cost(normalized_usage),
             attempts=attempt,
+        )
+
+    def _finish_ok(
+        self, record: Attempt | None, response: httpx.Response, data: Any
+    ) -> None:
+        """Write the ledger row of a request that got an HTTP success reply."""
+        if record is None:
+            return
+        body = data if isinstance(data, dict) else {}
+        usage = body.get("usage")
+        reported, source = read_reported_cost(
+            body,
+            response.headers,
+            field=self.reported_cost_field,
+            header=self.reported_cost_header,
+        )
+        model = body.get("model")
+        record.finish(
+            outcome="ok",
+            http_status=response.status_code,
+            usage=usage if isinstance(usage, dict) else {},
+            reported_model=model if isinstance(model, str) else None,
+            reported_cost_usd=reported,
+            reported_cost_source=source,
         )
 
     async def _post(
@@ -261,20 +307,15 @@ class OpenAICompatibleProvider(Provider):
         return self._backoff(attempt)
 
     def _estimate_cost(self, usage: dict[str, Any]) -> float | None:
-        if self.input_cost_per_million is None and self.output_cost_per_million is None:
-            return None
+        return estimate_cost(
+            _token_count(usage.get("prompt_tokens")),
+            _token_count(usage.get("completion_tokens")),
+            self.input_cost_per_million,
+            self.output_cost_per_million,
+        )
 
-        prompt_tokens = usage.get("prompt_tokens")
-        completion_tokens = usage.get("completion_tokens")
-        if not isinstance(prompt_tokens, (int, float)) and not isinstance(
-            completion_tokens, (int, float)
-        ):
-            return None
 
-        cost = 0.0
-        if isinstance(prompt_tokens, (int, float)) and self.input_cost_per_million is not None:
-            cost += (float(prompt_tokens) / 1_000_000) * self.input_cost_per_million
-        if isinstance(completion_tokens, (int, float)) and self.output_cost_per_million is not None:
-            cost += (float(completion_tokens) / 1_000_000) * self.output_cost_per_million
-        return round(cost, 8)
-
+def _token_count(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value) if math.isfinite(value) and value >= 0 else None

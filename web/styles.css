@@ -275,3 +275,8 @@ table.positions tr.failed td {
 #structureNotice {
   margin: .4rem 0;
 }
+#costSummary {
+  white-space: pre-line;
+  margin: .3rem 0;
+  font-size: .88rem;
+}

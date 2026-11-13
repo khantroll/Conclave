@@ -22,6 +22,10 @@ class Provider(ABC):
     only on this interface.
     """
 
+    # True when the adapter writes its own call-ledger rows (one per HTTP attempt). Otherwise the
+    # orchestrator records one row per call from the result.
+    records_calls: bool = False
+
     @abstractmethod
     async def ask(self, prompt: str) -> ProviderResponse:
         raise NotImplementedError

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
+from contextlib import contextmanager
 from collections.abc import Awaitable, Callable, Mapping
 from time import perf_counter
 
@@ -9,6 +11,7 @@ from .models import (
     DeliberationResult,
     DelegateRequest,
     DelegateResult,
+    CallRow,
     DelegateStatus,
     PanelRequest,
     PanelResult,
@@ -24,6 +27,18 @@ from .prompts import (
 from .positions import build_positions, insufficient_evidence
 from .synthesis import parse_sections
 from .quorum import describe_single_source, evaluate_quorum
+from .ledger import (
+    CallContext,
+    CallScope,
+    RunLedger,
+    Sink,
+    current_ledger,
+    now_iso,
+    reset_ledger,
+    reset_scope,
+    use_ledger,
+    use_scope,
+)
 from .providers.base import Provider, ProviderError
 from .sources import ProviderIdentity, group_sources, judge_overlap
 
@@ -38,7 +53,10 @@ class Orchestrator:
         self,
         providers: Mapping[str, Provider],
         identities: Mapping[str, ProviderIdentity] | None = None,
+        ledger_sink: Sink | None = None,
     ) -> None:
+        # Every provider request becomes a call-ledger row, handed to this sink as it happens.
+        self.ledger_sink = ledger_sink
         self._providers = dict(providers)
         # Providers without an identity (demo and test providers) are never merged
         # into one source.
@@ -108,7 +126,8 @@ class Orchestrator:
                     "This is a provider connectivity test. Do not add anything else."
                 ),
                 timeout_seconds=timeout_seconds,
-            )
+            ),
+            stage="connectivity_test",
         )
 
     def _result(
@@ -139,11 +158,20 @@ class Orchestrator:
             for name in judge_overlap(judge, panel.delegates, self._identities)
             if name in name_label
         }
+        ledger = current_ledger()
+        cost = ledger.totals() if ledger is not None else None
         return DeliberationResult(
             panel=panel,
             critic=critic,
             arbiter=arbiter,
-            estimated_cost_usd=_total_cost([*panel.delegates, critic, arbiter]),
+            # The calls this run made, from the call ledger (every attempt, failure, fallback and
+            # timeout). Without a ledger (a bare orchestrator call) the stage results are summed.
+            estimated_cost_usd=(
+                cost.estimated_total_usd
+                if cost is not None
+                else _total_cost([*panel.delegates, critic, arbiter])
+            ),
+            cost=cost,
             single_source=single,
             single_source_label=(
                 describe_single_source(panel.quorum) if single and panel.quorum else None
@@ -162,7 +190,63 @@ class Orchestrator:
             ),
         )
 
+    @contextmanager
+    def _ledger_for(self, call_context: CallContext | None):
+        """Make a ledger active for one operation, so every call it makes is recorded."""
+        context = call_context or CallContext()
+        ledger = RunLedger(
+            run_id=context.run_id, chain_root_id=context.chain_root_id, sink=self.ledger_sink
+        )
+        token = use_ledger(ledger)
+        try:
+            yield ledger
+        finally:
+            reset_ledger(token)
+
     async def deliberate(
+        self,
+        request: DeliberationRequest,
+        *,
+        on_stage: StageCallback | None = None,
+        call_context: CallContext | None = None,
+    ) -> DeliberationResult:
+        with self._ledger_for(call_context):
+            return await self._deliberate(request, on_stage=on_stage)
+
+    async def retry_delegate(
+        self,
+        *,
+        request: DeliberationRequest,
+        prior_result: DeliberationResult,
+        delegate_name: str,
+        call_context: CallContext | None = None,
+    ) -> DeliberationResult:
+        with self._ledger_for(call_context):
+            return await self._retry_delegate(
+                request=request, prior_result=prior_result, delegate_name=delegate_name
+            )
+
+    async def retry_critic(
+        self,
+        *,
+        request: DeliberationRequest,
+        prior_result: DeliberationResult,
+        call_context: CallContext | None = None,
+    ) -> DeliberationResult:
+        with self._ledger_for(call_context):
+            return await self._retry_critic(request=request, prior_result=prior_result)
+
+    async def retry_arbiter(
+        self,
+        *,
+        request: DeliberationRequest,
+        prior_result: DeliberationResult,
+        call_context: CallContext | None = None,
+    ) -> DeliberationResult:
+        with self._ledger_for(call_context):
+            return await self._retry_arbiter(request=request, prior_result=prior_result)
+
+    async def _deliberate(
         self,
         request: DeliberationRequest,
         *,
@@ -224,6 +308,7 @@ class Orchestrator:
             critic = None
         elif rerun_critic and request.critic:
             critic = await self._run_with_fallback(
+                stage="critic",
                 primary=request.critic,
                 fallbacks=request.critic_fallbacks,
                 prompt=build_critic_prompt(
@@ -251,6 +336,7 @@ class Orchestrator:
             )
         else:
             arbiter = await self._run_with_fallback(
+                stage="arbiter",
                 primary=request.arbiter,
                 fallbacks=request.arbiter_fallbacks,
                 prompt=build_arbiter_prompt(
@@ -271,7 +357,7 @@ class Orchestrator:
             await on_stage(final)
         return final
 
-    async def retry_delegate(
+    async def _retry_delegate(
         self,
         *,
         request: DeliberationRequest,
@@ -325,7 +411,7 @@ class Orchestrator:
             allow_single_source=request.allow_single_source,
         )
 
-    async def retry_critic(
+    async def _retry_critic(
         self,
         *,
         request: DeliberationRequest,
@@ -340,7 +426,7 @@ class Orchestrator:
             raise ValueError("A single-source run does not use the Critic")
         return await self._downstream(request=request, panel=panel, critic=None, rerun_critic=True)
 
-    async def retry_arbiter(
+    async def _retry_arbiter(
         self,
         *,
         request: DeliberationRequest,
@@ -360,6 +446,7 @@ class Orchestrator:
     async def _run_with_fallback(
         self,
         *,
+        stage: str,
         primary: str,
         fallbacks: list[str],
         prompt: str,
@@ -374,7 +461,8 @@ class Orchestrator:
                     name=name,
                     prompt=prompt,
                     timeout_seconds=timeout_seconds,
-                )
+                ),
+                stage=stage,
             )
             result = result.model_copy(update={"prior_attempts": list(prior)})
             if result.status == DelegateStatus.SUCCEEDED:
@@ -392,7 +480,9 @@ class Orchestrator:
         assert last_result is not None
         return last_result
 
-    async def _run_delegate(self, delegate: DelegateRequest) -> DelegateResult:
+    async def _run_delegate(
+        self, delegate: DelegateRequest, *, stage: str = "delegate"
+    ) -> DelegateResult:
         provider = self._providers.get(delegate.name)
         if provider is None:
             return DelegateResult(
@@ -402,6 +492,75 @@ class Orchestrator:
                 error=f"No provider configured for delegate: {delegate.name}",
             )
 
+        ledger = current_ledger() or RunLedger(sink=self.ledger_sink)
+        identity = self._identities.get(delegate.name)
+        scope = CallScope(
+            ledger=ledger,
+            stage=stage,
+            provider=delegate.name,
+            model=identity.model if identity is not None else getattr(provider, "model", None),
+        )
+        token = use_scope(scope)
+        try:
+            result = await self._call_provider(delegate, provider)
+        except BaseException:
+            # Cancelled mid-call: the request in flight may still be billed.
+            scope.close_open("cancelled")
+            self._record_unrecorded(scope, provider, None, "cancelled")
+            raise
+        finally:
+            reset_scope(token)
+        if result.status == DelegateStatus.TIMED_OUT:
+            scope.close_open("timeout")
+        self._record_unrecorded(scope, provider, result, None)
+        return result
+
+    def _record_unrecorded(
+        self,
+        scope: CallScope,
+        provider: Provider,
+        result: DelegateResult | None,
+        forced_outcome: str | None,
+    ) -> None:
+        """One ledger row for a provider that does not write its own (fakes, demo providers)."""
+        if getattr(provider, "records_calls", False) or scope.rows_written:
+            return
+        if forced_outcome is not None:
+            outcome = forced_outcome
+        elif result is not None and result.status == DelegateStatus.TIMED_OUT:
+            outcome = "timeout"
+        elif result is not None and (
+            result.status == DelegateStatus.SUCCEEDED or result.error_kind == "empty_response"
+        ):
+            outcome = "ok"
+        elif result is not None and result.error_kind in _HTTP_KINDS:
+            outcome = "http_error"
+        else:
+            outcome = "transport_error"
+        usage = result.usage if result is not None else {}
+        prompt_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+        completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+        scope.write(
+            CallRow(
+                id=uuid.uuid4().hex,
+                run_id=scope.ledger.run_id,
+                chain_root_id=scope.ledger.chain_root_id,
+                stage=scope.stage,
+                provider=scope.provider,
+                configured_model=scope.configured_model,
+                reported_model=result.model if result is not None else None,
+                attempt_no=result.attempts if result is not None else 1,
+                outcome=outcome,
+                started_at=now_iso(),
+                latency_ms=result.latency_ms if result is not None else None,
+                prompt_tokens=prompt_tokens if isinstance(prompt_tokens, int) else None,
+                completion_tokens=completion_tokens if isinstance(completion_tokens, int) else None,
+                estimated_cost_usd=result.estimated_cost_usd if result is not None else None,
+                possibly_billed=outcome in {"ok", "timeout", "cancelled", "transport_error"},
+            )
+        )
+
+    async def _call_provider(self, delegate: DelegateRequest, provider: Provider) -> DelegateResult:
         started = perf_counter()
         try:
             async with asyncio.timeout(delegate.timeout_seconds) as deadline:
@@ -456,6 +615,11 @@ class Orchestrator:
             attempts=response.attempts,
             latency_ms=_elapsed_ms(started),
         )
+
+
+_HTTP_KINDS = frozenset(
+    {"auth", "quota", "rate_limit", "capacity", "bad_request", "server_error"}
+)
 
 
 def _total_cost(results: list[DelegateResult | None]) -> float | None:

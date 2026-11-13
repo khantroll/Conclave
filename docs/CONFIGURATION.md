@@ -154,6 +154,24 @@ Once that fixed three-model path is proven, enable automatic delegate selection 
 Model availability can change. If a provider Test button reports a model-not-found error, update only that provider's `model` value in `conclave.json`, restart Conclave, and test again.
 
 
+## The call ledger and cost
+
+Cost used to be recomputed from the stage results that survived a run, so retries, fallbacks, HTTP-level retries, failed calls, timeouts and connectivity tests disappeared from it, and one number mixed estimate with fact. Conclave now keeps a call ledger: the `provider_calls` table holds **one row per HTTP request** a provider adapter makes, plus one row for each call a timeout or cancellation abandoned. Rows are written as calls end, so a cancelled or crashed run keeps what it already spent. The table is new; an older database simply gains it and nothing existing is rewritten.
+
+A row records the run and retry chain it belongs to (`run_id` is null for connectivity tests), the stage (`delegate`, `critic`, `arbiter`, `connectivity_test`), the provider, the configured model and the model the provider reported, the attempt number, the outcome (`ok`, `http_error`, `transport_error`, `timeout`, `cancelled`), HTTP status, start time and latency, token counts and the raw usage, the prices in force at the time, and the three cost fields below. It never holds a prompt, a header or a key. Read it with `GET /api/runs/{id}/calls` (add `?chain=true` for the whole retry chain).
+
+Three terms are kept apart and never mixed:
+
+- **Estimated**: tokens x the price configured at the time (`input_cost_per_million`, `output_cost_per_million`; the prices are stored on the row, so a later price change cannot rewrite history). It is unknown, not zero, when usage is missing or a needed price is not configured.
+- **Provider-reported**: an amount the provider or gateway states for that call. It is read only from where you tell Conclave to look, with `reported_cost_field` (a dotted path into the JSON reply, for example `usage.cost`) and/or `reported_cost_header`. Conclave never guesses where a cost is; with neither set, none is recorded. A value that is not a finite, non-negative number is ignored.
+- **Billed**: what appears on the provider's invoice. Conclave never shows or claims it. Reconcile it by hand against the invoice.
+
+Totals are per run (the calls that run made, in `result.cost`; `estimated_cost_usd` is the estimated total) and per retry chain (every call in every run of the chain, in `chain_cost` on a run). Each has the estimated total, the number of priced and unpriced calls, how many unpriced calls were possibly billed, and the provider-reported total with how many calls it covers. The console shows, for example, "Estimated $0.012 (2 calls unpriced). Provider-reported $0.012 for 5 of 7 calls.", and when nothing can be priced it says "Cost unknown", never $0.
+
+`possibly_billed` is true for a call that may have been charged: a success, a timeout or cancellation, a transport failure after the request may have been accepted, or a 5xx. It is false for a refused connection and for a 4xx the provider rejected before generating anything.
+
+Providers that make no HTTP request (the built-in demo providers) get one row per call written from the result, with whatever cost the result carried.
+
 ## Output length, temperature and prompt size
 
 Three optional settings per provider keep cost and behaviour in hand. Each is used only when set; leaving it out keeps the provider's own default and sends nothing extra.

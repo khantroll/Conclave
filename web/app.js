@@ -14,6 +14,7 @@ const {
   describeRefresh,
   delegateCardsHtml,
   judgeOverlapNotice,
+  costLines,
   structureHtml,
   structureNotices,
   labelLegend,
@@ -459,7 +460,7 @@ async function deliberate() {
   }
 }
 
-function renderResult(result, runId = null) {
+function renderResult(result, runId = null, chainCost = null) {
   currentRunId = runId || currentRunId;
   $("runId").textContent = currentRunId ? `run ${currentRunId.slice(0, 8)}` : "";
   $("downloadRun").classList.toggle("hidden", !currentRunId);
@@ -479,6 +480,7 @@ function renderResult(result, runId = null) {
   // The label is the server's own sentence, so the console, the saved result and the
   // Arbiter prompt all describe the run identically.
   $("singleSourceBanner").textContent = result.single_source_label || "";
+  $("costSummary").textContent = costLines(result.cost, chainCost).join("\n");
   const summary = sourceSummary(result.panel);
   $("sourceSummary").textContent = summary;
   // Always shown with a result, including runs saved before source counting existed.
@@ -544,7 +546,7 @@ async function retryDelegate(name, button) {
       `/api/runs/${currentRunId}/delegates/${encodeURIComponent(name)}/retry`,
       {method: "POST"}
     )).json();
-    renderResult(run.result, run.id);
+    renderResult(run.result, run.id, run.chain_cost);
     const cost = formatCost(run.result.estimated_cost_usd);
     $("status").textContent = `${name} retried; ${describeRefresh(run.result, "delegate")}.${cost ? " Estimated run cost " + cost + "." : ""}`;
     await loadHistory();
@@ -566,7 +568,7 @@ async function retryStage(stage, button) {
       `/api/runs/${currentRunId}/${stage}/retry`,
       {method: "POST"}
     )).json();
-    renderResult(run.result, run.id);
+    renderResult(run.result, run.id, run.chain_cost);
     $("status").textContent =
       `${stage === "critic" ? "Critic" : "Arbiter"} retried; ${describeRefresh(run.result, stage)}.`;
     await loadHistory();
@@ -601,7 +603,7 @@ function renderHistory(targetId, runs) {
     item.addEventListener("click", async () => {
       const run = await (await api(`/api/runs/${item.dataset.runId}`)).json();
       $("question").value = run.question;
-      renderResult(run.result, run.id);
+      renderResult(run.result, run.id, run.chain_cost);
     });
   });
 }
