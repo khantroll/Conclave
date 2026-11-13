@@ -27,6 +27,11 @@ class ProviderConfig(BaseModel):
     # Optional model family (for example openai, meta, mistral), used only to describe how
     # many families a panel spans. It never changes how sources are counted.
     family: str | None = None
+    # Optional controls. Each is sent or enforced only when set; unset keeps the provider's own
+    # default. max_prompt_chars is a local check: a longer prompt is not sent at all.
+    max_output_tokens: int | None = Field(default=None, ge=1, strict=True)
+    temperature: float | None = Field(default=None, ge=0, le=2, strict=True)
+    max_prompt_chars: int | None = Field(default=None, ge=1, strict=True)
     transient_max_retries: int = Field(default=2, ge=0, le=5)
     retry_backoff_seconds: float = Field(default=1.0, ge=0, le=30)
 

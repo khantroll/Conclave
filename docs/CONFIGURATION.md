@@ -154,6 +154,18 @@ Once that fixed three-model path is proven, enable automatic delegate selection 
 Model availability can change. If a provider Test button reports a model-not-found error, update only that provider's `model` value in `conclave.json`, restart Conclave, and test again.
 
 
+## Output length, temperature and prompt size
+
+Three optional settings per provider keep cost and behaviour in hand. Each is used only when set; leaving it out keeps the provider's own default and sends nothing extra.
+
+| key | effect |
+| --- | --- |
+| `max_output_tokens` | sent as `max_tokens`, bounding the length of every answer from this provider |
+| `temperature` | sent as `temperature` (0 to 2; 0 is sent when set to 0) |
+| `max_prompt_chars` | a local check, not sent to the provider: a prompt longer than this (system prompt included) is not sent at all |
+
+A Critic or Arbiter prompt grows with the number and length of the delegate answers, so it can exceed a model's context window. With `max_prompt_chars` set to a safe figure for that model, an oversized prompt fails the stage at once with error kind `prompt_too_large` (no request, no cost) and the next configured fallback is tried; the failed primary is recorded in `prior_attempts`. If every provider for the stage is too small, the stage fails with that kind and a message saying the prompt was not sent. A provider with `max_prompt_chars` set never receives a longer prompt. Characters are a rough proxy for tokens (about four characters per English token); choose the limit with margin.
+
 ## Error kinds and the retry policy
 
 Every failed provider call is classified, and the kind is saved as `error_kind` on the result (and shown in the console as, for example, `failed (auth)`):
@@ -170,6 +182,7 @@ Every failed provider call is classified, and the kind is saved as `error_kind` 
 | `malformed` | the reply was not a usable chat completion | no |
 | `empty_response` | the reply held no text | no |
 | `timeout` | the stage timeout expired | no |
+| `prompt_too_large` | the prompt is over the provider's `max_prompt_chars`; nothing was sent | no |
 
 Only `rate_limit`, `capacity` and a refused connection are ever sent twice. A quota or a bad key fails at once instead of spending retries (and, for a quota, time). A refused connection never reached the provider, so a repeat cannot double-bill; any other transport failure may have been accepted, so it is not replayed.
 

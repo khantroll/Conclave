@@ -45,6 +45,9 @@ def build_providers(configs: Iterable[ProviderConfig]) -> dict[str, Provider]:
                 output_cost_per_million=config.output_cost_per_million,
                 transient_max_retries=config.transient_max_retries,
                 retry_backoff_seconds=config.retry_backoff_seconds,
+                max_output_tokens=config.max_output_tokens,
+                temperature=config.temperature,
+                max_prompt_chars=config.max_prompt_chars,
             )
             continue
 

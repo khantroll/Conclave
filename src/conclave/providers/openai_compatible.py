@@ -41,6 +41,9 @@ class OpenAICompatibleProvider(Provider):
         output_cost_per_million: float | None = None,
         transient_max_retries: int = 2,
         retry_backoff_seconds: float = 1.0,
+        max_output_tokens: int | None = None,
+        temperature: float | None = None,
+        max_prompt_chars: int | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -52,6 +55,9 @@ class OpenAICompatibleProvider(Provider):
         self.output_cost_per_million = output_cost_per_million
         self.transient_max_retries = transient_max_retries
         self.retry_backoff_seconds = retry_backoff_seconds
+        self.max_output_tokens = max_output_tokens
+        self.temperature = temperature
+        self.max_prompt_chars = max_prompt_chars
         self._client = client
 
     async def ask(self, prompt: str) -> ProviderResponse:
@@ -60,14 +66,30 @@ class OpenAICompatibleProvider(Provider):
             messages.append({"role": "system", "content": self.system_prompt})
         messages.append({"role": "user", "content": prompt})
 
+        # Everything that would be sent counts, the system prompt included. A prompt over the
+        # limit is never sent: it would only be refused, or silently truncated, by the provider.
+        sent_chars = sum(len(message["content"]) for message in messages)
+        if self.max_prompt_chars is not None and sent_chars > self.max_prompt_chars:
+            raise ProviderError(
+                f"Prompt is {sent_chars} characters, over this provider's max_prompt_chars of "
+                f"{self.max_prompt_chars}; it was not sent",
+                attempts=1,
+                kind="prompt_too_large",
+            )
+
         headers = {"Content-Type": "application/json", **self.extra_headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        payload = {
+        payload: dict[str, object] = {
             "model": self.model,
             "messages": messages,
         }
+        # Sent only when configured, so a provider's own defaults are untouched otherwise.
+        if self.max_output_tokens is not None:
+            payload["max_tokens"] = self.max_output_tokens
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
 
         max_attempts = self.transient_max_retries + 1
         response: httpx.Response | None = None
