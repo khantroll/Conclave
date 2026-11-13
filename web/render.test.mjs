@@ -262,3 +262,17 @@ test("the label legend maps labels to delegates in order", () => {
   assert.equal(render.labelLegend({}), "");
   assert.equal(render.labelLegend(undefined), "");
 });
+
+test("stage meta shows the error kind and the fallback trail", () => {
+  assert.equal(render.formatStageMeta({ status: "failed", error_kind: "auth", attempts: 1 }), "failed (auth)");
+  assert.equal(render.formatStageMeta({ status: "succeeded" }), "succeeded");
+  const meta = render.formatStageMeta({
+    status: "succeeded",
+    prior_attempts: [
+      { name: "arbiter", status: "failed", error_kind: "quota" },
+      { name: "arbiter-2", status: "timed_out", error_kind: "timeout" },
+      { name: "plain", status: "failed", error_kind: null },
+    ],
+  });
+  assert.match(meta, /after: arbiter failed \(quota\), arbiter-2 timed_out \(timeout\), plain failed$/);
+});

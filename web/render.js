@@ -36,7 +36,7 @@
   }
 
   function formatStageMeta(stage) {
-    const parts = [stage.status];
+    const parts = [stage.error_kind ? `${stage.status} (${stage.error_kind})` : stage.status];
     if (stage.model) parts.push(stage.model);
     if (stage.latency_ms != null) parts.push(`${stage.latency_ms} ms`);
     if (stage.attempts > 1) parts.push(`${stage.attempts} attempts`);
@@ -50,6 +50,11 @@
     }
     const cost = formatCost(stage.estimated_cost_usd);
     if (cost) parts.push(cost);
+    // A fallback that answered after earlier providers failed: say which, and why.
+    const prior = (stage.prior_attempts || [])
+      .map((p) => `${p.name} ${p.status}${p.error_kind ? " (" + p.error_kind + ")" : ""}`)
+      .join(", ");
+    if (prior) parts.push(`after: ${prior}`);
     return parts.join(" · ");
   }
 

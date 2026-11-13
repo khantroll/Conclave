@@ -230,6 +230,7 @@ def create_app(
                 model=result.model,
                 latency_ms=result.latency_ms,
                 error=result.error,
+                error_kind=result.error_kind,
                 attempts=result.attempts,
             )
             for result in results
@@ -246,6 +247,7 @@ def create_app(
             model=result.model,
             latency_ms=result.latency_ms,
             error=result.error,
+            error_kind=result.error_kind,
             attempts=result.attempts,
         )
 
