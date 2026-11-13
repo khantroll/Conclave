@@ -88,10 +88,13 @@ def test_the_readme_states_every_limitation_the_roadmap_requires():
 def test_the_critic_default_statement_matches_the_benchmark_results_file():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     results = (ROOT / "bench" / "judge" / "RESULTS.md").read_text(encoding="utf-8")
-    if "not yet run" in results.lower():
-        assert "no default" in readme.lower() and "has **not** been run" in readme
-    else:  # once there is a result, the README must state the default and where it comes from
-        assert "bench/judge/RESULTS.md" in readme and "has **not** been run" not in readme
+    done = len((ROOT / "bench" / "judge" / "results.jsonl").read_text(encoding="utf-8").splitlines())
+    if done < 144:
+        assert "attempted, incomplete, no decision" in results.lower()
+        assert f"{done} of 144 trials" in results and f"{done} of 144 trials" in readme
+        assert "no default" in readme.lower() and "no decision" in readme.lower()
+    else:  # a complete set: the README must say where the default comes from
+        assert "bench/judge/RESULTS.md" in readme and "incomplete" not in results.lower().split("status")[1][:80]
 
 
 def test_no_document_claims_what_is_not_built():
