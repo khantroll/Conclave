@@ -29,8 +29,9 @@ class ConclaveConfig(BaseModel):
     providers: list[ProviderConfig] = Field(default_factory=list)
 
 
-def load_config(path: str | Path | None = None) -> ConclaveConfig:
-    load_dotenv()
+def load_config(path: str | Path | None = None, *, load_env: bool = True) -> ConclaveConfig:
+    if load_env:
+        load_dotenv()
     resolved = Path(path or os.getenv("CONCLAVE_CONFIG_PATH", "conclave.json"))
     if not resolved.exists():
         return ConclaveConfig()

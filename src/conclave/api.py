@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .analyzer import analyze_request
-from .config import load_config
+from .config import ConclaveConfig, load_config
 from .models import (
     AnalyzeRequest,
     DeliberationRequest,
@@ -33,7 +33,18 @@ from .selection import select_delegates
 from .store import WorkspaceStore
 
 
-def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
+def create_app(
+    *,
+    config: ConclaveConfig | None = None,
+    workspace_store: WorkspaceStore | None = None,
+    run_log_dir: str | Path | None = None,
+    load_env: bool = True,
+) -> FastAPI:
+    """Build the application.
+
+    When ``config`` is given, no configuration file or ``.env`` is read. When
+    ``workspace_store`` is given, no database or run-log directory is opened.
+    """
     app = FastAPI(
         title="Conclave",
         version="0.1.0",
@@ -47,7 +58,8 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
     async def web_console() -> FileResponse:
         return FileResponse(web_dir / "index.html")
 
-    config = load_config()
+    if config is None:
+        config = load_config(load_env=load_env)
     configured = build_providers(config.providers)
 
     providers = {
@@ -102,7 +114,7 @@ def create_app(*, workspace_store: WorkspaceStore | None = None) -> FastAPI:
     orchestrator = Orchestrator(providers)
     store = workspace_store or WorkspaceStore(
         os.getenv("CONCLAVE_DB_PATH", "conclave.db"),
-        run_log_dir=os.getenv("CONCLAVE_RUN_LOG_DIR", "run_logs"),
+        run_log_dir=run_log_dir or os.getenv("CONCLAVE_RUN_LOG_DIR", "run_logs"),
     )
 
     @app.get("/health")
@@ -423,4 +435,16 @@ def _validate_quorum(minimum_successes: int, delegate_count: int) -> None:
         )
 
 
-app = create_app()
+_default_app: FastAPI | None = None
+
+
+def __getattr__(name: str) -> FastAPI:
+    # ``uvicorn conclave.api:app`` still works, but importing this module no
+    # longer reads configuration or opens the database. The application is
+    # built on first access.
+    global _default_app
+    if name == "app":
+        if _default_app is None:
+            _default_app = create_app()
+        return _default_app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
