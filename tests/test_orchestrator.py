@@ -99,6 +99,7 @@ async def test_failed_critic_does_not_block_arbiter():
     orchestrator = Orchestrator(
         {
             "delegate": FakeProvider("delegate answer"),
+            "second": FakeProvider("second answer"),
             "critic": FakeProvider(error=RuntimeError("critic unavailable")),
             "arbiter": FakeProvider("final synthesis"),
         }
@@ -107,7 +108,7 @@ async def test_failed_critic_does_not_block_arbiter():
     result = await orchestrator.deliberate(
         DeliberationRequest(
             question="test",
-            delegates=["delegate"],
+            delegates=["delegate", "second"],
             critic="critic",
             arbiter="arbiter",
         )
@@ -197,6 +198,7 @@ async def test_deliberation_sums_available_cost_estimates():
     orchestrator = Orchestrator(
         {
             "delegate": FakeProvider("answer", estimated_cost_usd=0.01),
+            "second": FakeProvider("answer two", estimated_cost_usd=0.01),
             "critic": FakeProvider("critique", estimated_cost_usd=0.02),
             "arbiter": FakeProvider("final", estimated_cost_usd=0.03),
         }
@@ -205,13 +207,13 @@ async def test_deliberation_sums_available_cost_estimates():
     result = await orchestrator.deliberate(
         DeliberationRequest(
             question="cost test",
-            delegates=["delegate"],
+            delegates=["delegate", "second"],
             critic="critic",
             arbiter="arbiter",
         )
     )
 
-    assert result.estimated_cost_usd == 0.06
+    assert result.estimated_cost_usd == 0.07
     assert result.panel.delegates[0].estimated_cost_usd == 0.01
 
 
@@ -241,7 +243,7 @@ async def test_retry_critic_preserves_panel_and_refreshes_arbiter():
     )
     request = DeliberationRequest(
         question="retry critic",
-        delegates=["delegate"],
+        delegates=["delegate", "second"],
         critic="critic",
         arbiter="arbiter",
     )
@@ -254,9 +256,15 @@ async def test_retry_critic_preserves_panel_and_refreshes_arbiter():
                     status=DelegateStatus.SUCCEEDED,
                     prompt="delegate prompt",
                     raw_response="delegate answer",
-                )
+                ),
+                DelegateResult(
+                    name="second",
+                    status=DelegateStatus.SUCCEEDED,
+                    prompt="delegate prompt",
+                    raw_response="second answer",
+                ),
             ],
-            successful_count=1,
+            successful_count=2,
             failed_count=0,
             synthesizeable=True,
         ),
@@ -287,7 +295,7 @@ async def test_retry_arbiter_preserves_panel_and_critic():
     orchestrator = Orchestrator({"arbiter": FakeProvider("new final")})
     request = DeliberationRequest(
         question="retry arbiter",
-        delegates=["delegate"],
+        delegates=["delegate", "second"],
         critic="critic",
         arbiter="arbiter",
     )
@@ -304,9 +312,14 @@ async def test_retry_arbiter_preserves_panel_and_critic():
                     name="delegate",
                     status=DelegateStatus.SUCCEEDED,
                     raw_response="keep delegate",
-                )
+                ),
+                DelegateResult(
+                    name="second",
+                    status=DelegateStatus.SUCCEEDED,
+                    raw_response="keep second",
+                ),
             ],
-            successful_count=1,
+            successful_count=2,
             failed_count=0,
             synthesizeable=True,
         ),
@@ -335,6 +348,7 @@ async def test_critic_and_arbiter_fallbacks_are_used():
     orchestrator = Orchestrator(
         {
             "delegate": FakeProvider("delegate answer"),
+            "second": FakeProvider("second answer"),
             "critic-primary": FakeProvider(error=RuntimeError("critic down")),
             "critic-fallback": FakeProvider("fallback critique"),
             "arbiter-primary": FakeProvider(error=RuntimeError("arbiter down")),
@@ -345,7 +359,7 @@ async def test_critic_and_arbiter_fallbacks_are_used():
     result = await orchestrator.deliberate(
         DeliberationRequest(
             question="fallback test",
-            delegates=["delegate"],
+            delegates=["delegate", "second"],
             critic="critic-primary",
             critic_fallbacks=["critic-fallback"],
             arbiter="arbiter-primary",
@@ -407,7 +421,11 @@ async def test_on_stage_without_critic_and_on_quorum_failure():
         seen.append(result.arbiter is not None)
 
     no_critic = DeliberationRequest(
-        question="q", delegates=["a"], arbiter="arbiter", minimum_successes=1
+        question="q",
+        delegates=["a"],
+        arbiter="arbiter",
+        minimum_successes=1,
+        single_source_mode="arbiter_single_source",
     )
     await orchestrator.deliberate(no_critic, on_stage=on_stage)
     assert seen == [False, True]

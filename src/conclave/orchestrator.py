@@ -12,9 +12,10 @@ from .models import (
     DelegateStatus,
     PanelRequest,
     PanelResult,
+    SingleSourceAnswer,
 )
 from .prompts import build_arbiter_prompt, build_critic_prompt, build_delegate_prompt
-from .quorum import evaluate_quorum
+from .quorum import describe_single_source, evaluate_quorum
 from .providers.base import Provider, ProviderError
 from .sources import ProviderIdentity, group_sources
 
@@ -93,13 +94,35 @@ class Orchestrator:
             )
         )
 
+    def _result(
+        self,
+        panel: PanelResult,
+        *,
+        critic: DelegateResult | None = None,
+        arbiter: DelegateResult | None = None,
+        answer: SingleSourceAnswer | None = None,
+    ) -> DeliberationResult:
+        """Assemble a result. A single-source run carries one label, used everywhere."""
+        single = panel.synthesizeable and panel.independent_source_count == 1
+        return DeliberationResult(
+            panel=panel,
+            critic=critic,
+            arbiter=arbiter,
+            estimated_cost_usd=_total_cost([*panel.delegates, critic, arbiter]),
+            single_source=single,
+            single_source_label=(
+                describe_single_source(panel.quorum) if single and panel.quorum else None
+            ),
+            single_source_answer=answer,
+        )
+
     async def deliberate(
         self,
         request: DeliberationRequest,
         *,
         on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
-        """Run the panel, Critic and Arbiter.
+        """Run the panel, then the Critic and Arbiter where they apply.
 
         ``on_stage`` is awaited with the result so far after the panel, after
         the Critic and after the Arbiter, so callers can persist each stage.
@@ -123,17 +146,37 @@ class Orchestrator:
         )
         panel = await self.run_panel(panel_request)
 
-        after_panel = DeliberationResult(
-            panel=panel,
-            estimated_cost_usd=_total_cost(panel.delegates),
-        )
+        after_panel = self._result(panel)
         if on_stage is not None:
             await on_stage(after_panel)
         if not panel.synthesizeable:
             return after_panel
+        return await self._downstream(
+            request=request, panel=panel, critic=None, rerun_critic=True, on_stage=on_stage
+        )
 
-        critic: DelegateResult | None = None
-        if request.critic:
+    async def _downstream(
+        self,
+        *,
+        request: DeliberationRequest,
+        panel: PanelResult,
+        critic: DelegateResult | None,
+        rerun_critic: bool,
+        on_stage: StageCallback | None = None,
+    ) -> DeliberationResult:
+        """Critic and Arbiter for a panel that may proceed (one code path for every run).
+
+        A single independent source has nothing to be compared with, so the Critic is
+        skipped. The workspace's ``single_source_mode`` then decides whether the Arbiter
+        runs. That mode only chooses how a single-source run ends: whether such a run may
+        start at all was already decided by the quorum check.
+        """
+        single = panel.independent_source_count == 1
+        label = describe_single_source(panel.quorum) if single and panel.quorum else None
+
+        if single:
+            critic = None
+        elif rerun_critic and request.critic:
             critic = await self._run_with_fallback(
                 primary=request.critic,
                 fallbacks=request.critic_fallbacks,
@@ -148,35 +191,33 @@ class Orchestrator:
                 timeout_seconds=request.critic_timeout_seconds,
             )
             if on_stage is not None:
-                await on_stage(
-                    DeliberationResult(
-                        panel=panel,
-                        critic=critic,
-                        estimated_cost_usd=_total_cost([*panel.delegates, critic]),
-                    )
-                )
+                await on_stage(self._result(panel, critic=critic))
 
-        arbiter_prompt = build_arbiter_prompt(
-            seed=request.seed,
-            response_char_limit=request.judge_response_char_limit,
-            source_groups=panel.sources,
-            question=request.question,
-            delegate_results=panel.delegates,
-            workspace_context=request.workspace_context,
-            critic_result=critic,
-        )
-        arbiter = await self._run_with_fallback(
-            primary=request.arbiter,
-            fallbacks=request.arbiter_fallbacks,
-            prompt=arbiter_prompt,
-            timeout_seconds=request.arbiter_timeout_seconds,
-        )
-        final = DeliberationResult(
-            panel=panel,
-            critic=critic,
-            arbiter=arbiter,
-            estimated_cost_usd=_total_cost([*panel.delegates, critic, arbiter]),
-        )
+        if single and request.single_source_mode == "return_answer":
+            only = next(r for r in panel.delegates if r.status == DelegateStatus.SUCCEEDED)
+            final = self._result(
+                panel,
+                answer=SingleSourceAnswer(
+                    delegate=only.name, text=only.raw_response or "", model=only.model
+                ),
+            )
+        else:
+            arbiter = await self._run_with_fallback(
+                primary=request.arbiter,
+                fallbacks=request.arbiter_fallbacks,
+                prompt=build_arbiter_prompt(
+                    seed=request.seed,
+                    response_char_limit=request.judge_response_char_limit,
+                    source_groups=panel.sources,
+                    question=request.question,
+                    delegate_results=panel.delegates,
+                    workspace_context=request.workspace_context,
+                    critic_result=critic,
+                    single_source_label=label,
+                ),
+                timeout_seconds=request.arbiter_timeout_seconds,
+            )
+            final = self._result(panel, critic=critic, arbiter=arbiter)
         if on_stage is not None:
             await on_stage(final)
         return final
@@ -213,48 +254,26 @@ class Orchestrator:
             minimum_successes=request.minimum_successes,
             allow_single_source=request.allow_single_source,
         )
-
         if not panel.synthesizeable:
-            return DeliberationResult(
-                panel=panel,
-                estimated_cost_usd=_total_cost(panel.delegates),
-            )
-
-        critic: DelegateResult | None = None
-        if request.critic:
-            critic = await self._run_with_fallback(
-                primary=request.critic,
-                fallbacks=request.critic_fallbacks,
-                prompt=build_critic_prompt(
-                    seed=request.seed,
-                    response_char_limit=request.judge_response_char_limit,
-                    source_groups=panel.sources,
-                    question=request.question,
-                    delegate_results=panel.delegates,
-                    workspace_context=request.workspace_context,
-                ),
-                timeout_seconds=request.critic_timeout_seconds,
-            )
-
-        arbiter = await self._run_with_fallback(
-            primary=request.arbiter,
-            fallbacks=request.arbiter_fallbacks,
-            prompt=build_arbiter_prompt(
-                seed=request.seed,
-                response_char_limit=request.judge_response_char_limit,
-                source_groups=panel.sources,
-                question=request.question,
-                delegate_results=panel.delegates,
-                workspace_context=request.workspace_context,
-                critic_result=critic,
-            ),
-            timeout_seconds=request.arbiter_timeout_seconds,
+            return self._result(panel)
+        return await self._downstream(
+            request=request, panel=panel, critic=None, rerun_critic=True
         )
-        return DeliberationResult(
-            panel=panel,
-            critic=critic,
-            arbiter=arbiter,
-            estimated_cost_usd=_total_cost([*panel.delegates, critic, arbiter]),
+
+    def _counted(self, request: DeliberationRequest, panel: PanelResult) -> PanelResult:
+        """Give a run saved before source counting its source groups and quorum report.
+
+        Such a panel has no ``independent_source_count``. Recomputing it from the stored
+        answers (with the providers' current identities) means a retry is judged, and its
+        prompts are written, by the same rules as a new run.
+        """
+        if panel.independent_source_count is not None:
+            return panel
+        return self._panel_result(
+            question=panel.question,
+            delegates=panel.delegates,
+            minimum_successes=request.minimum_successes,
+            allow_single_source=request.allow_single_source,
         )
 
     async def retry_critic(
@@ -265,44 +284,12 @@ class Orchestrator:
     ) -> DeliberationResult:
         if not request.critic:
             raise ValueError("The original request did not configure a Critic")
-        if not prior_result.panel.synthesizeable:
+        panel = self._counted(request, prior_result.panel)
+        if not panel.synthesizeable:
             raise ValueError("The Delegate panel does not satisfy quorum")
-
-        critic = await self._run_with_fallback(
-            primary=request.critic,
-            fallbacks=request.critic_fallbacks,
-            prompt=build_critic_prompt(
-                seed=request.seed,
-                response_char_limit=request.judge_response_char_limit,
-                source_groups=prior_result.panel.sources,
-                question=request.question,
-                delegate_results=prior_result.panel.delegates,
-                workspace_context=request.workspace_context,
-            ),
-            timeout_seconds=request.critic_timeout_seconds,
-        )
-        arbiter = await self._run_with_fallback(
-            primary=request.arbiter,
-            fallbacks=request.arbiter_fallbacks,
-            prompt=build_arbiter_prompt(
-                seed=request.seed,
-                response_char_limit=request.judge_response_char_limit,
-                source_groups=prior_result.panel.sources,
-                question=request.question,
-                delegate_results=prior_result.panel.delegates,
-                workspace_context=request.workspace_context,
-                critic_result=critic,
-            ),
-            timeout_seconds=request.arbiter_timeout_seconds,
-        )
-        return DeliberationResult(
-            panel=prior_result.panel,
-            critic=critic,
-            arbiter=arbiter,
-            estimated_cost_usd=_total_cost(
-                [*prior_result.panel.delegates, critic, arbiter]
-            ),
-        )
+        if panel.independent_source_count == 1:
+            raise ValueError("A single-source run does not use the Critic")
+        return await self._downstream(request=request, panel=panel, critic=None, rerun_critic=True)
 
     async def retry_arbiter(
         self,
@@ -310,30 +297,15 @@ class Orchestrator:
         request: DeliberationRequest,
         prior_result: DeliberationResult,
     ) -> DeliberationResult:
-        if not prior_result.panel.synthesizeable:
+        panel = self._counted(request, prior_result.panel)
+        if not panel.synthesizeable:
             raise ValueError("The Delegate panel does not satisfy quorum")
-
-        arbiter = await self._run_with_fallback(
-            primary=request.arbiter,
-            fallbacks=request.arbiter_fallbacks,
-            prompt=build_arbiter_prompt(
-                seed=request.seed,
-                response_char_limit=request.judge_response_char_limit,
-                source_groups=prior_result.panel.sources,
-                question=request.question,
-                delegate_results=prior_result.panel.delegates,
-                workspace_context=request.workspace_context,
-                critic_result=prior_result.critic,
-            ),
-            timeout_seconds=request.arbiter_timeout_seconds,
-        )
-        return DeliberationResult(
-            panel=prior_result.panel,
-            critic=prior_result.critic,
-            arbiter=arbiter,
-            estimated_cost_usd=_total_cost(
-                [*prior_result.panel.delegates, prior_result.critic, arbiter]
-            ),
+        if panel.independent_source_count == 1 and request.single_source_mode == "return_answer":
+            raise ValueError(
+                "This single-source run returned the delegate's answer, so it has no Arbiter to retry"
+            )
+        return await self._downstream(
+            request=request, panel=panel, critic=prior_result.critic, rerun_critic=False
         )
 
     async def _run_with_fallback(

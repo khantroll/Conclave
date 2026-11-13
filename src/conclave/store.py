@@ -82,6 +82,12 @@ class WorkspaceStore:
                 column="allow_single_source",
                 definition="INTEGER NOT NULL DEFAULT 0",
             )
+            self._ensure_column(
+                connection,
+                table="workspaces",
+                column="single_source_mode",
+                definition="TEXT NOT NULL DEFAULT 'return_answer'",
+            )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS deliberation_runs (
@@ -150,8 +156,8 @@ class WorkspaceStore:
                     id, name, description, context, delegates_json, roles_json,
                     critic, critic_fallbacks_json, arbiter, arbiter_fallbacks_json,
                     minimum_successes, auto_select_delegates, allow_single_source,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    single_source_mode, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workspace.id,
@@ -167,6 +173,7 @@ class WorkspaceStore:
                     workspace.minimum_successes,
                     1 if workspace.auto_select_delegates else 0,
                     1 if workspace.allow_single_source else 0,
+                    workspace.single_source_mode or "return_answer",
                     workspace.created_at,
                     workspace.updated_at,
                 ),
@@ -191,7 +198,8 @@ class WorkspaceStore:
                 SET name = ?, description = ?, context = ?, delegates_json = ?,
                     roles_json = ?, critic = ?, critic_fallbacks_json = ?,
                     arbiter = ?, arbiter_fallbacks_json = ?, minimum_successes = ?,
-                    auto_select_delegates = ?, allow_single_source = ?, updated_at = ?
+                    auto_select_delegates = ?, allow_single_source = ?,
+                    single_source_mode = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -207,6 +215,7 @@ class WorkspaceStore:
                     updated.minimum_successes,
                     1 if updated.auto_select_delegates else 0,
                     1 if updated.allow_single_source else 0,
+                    updated.single_source_mode or "return_answer",
                     updated.updated_at,
                     updated.id,
                 ),
@@ -437,6 +446,7 @@ class WorkspaceStore:
             minimum_successes=row["minimum_successes"],
             auto_select_delegates=bool(row["auto_select_delegates"]),
             allow_single_source=bool(row["allow_single_source"]),
+            single_source_mode=row["single_source_mode"] or "return_answer",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

@@ -53,6 +53,14 @@
           <label>Minimum successes<input id="workspaceQuorum" type="number" min="1" value="1"></label>
           <label class="checkbox-row"><input id="workspaceAutoSelect" type="checkbox"> Automatically choose a subset of delegates based on the question</label>
           <label class="checkbox-row"><input id="workspaceAllowSingleSource" type="checkbox"> Allow a single-source run when the quorum cannot be met (the result is labelled and is not a consensus)</label>
+          <label>When only one independent source answers
+            <select id="workspaceSingleSourceMode" required>
+              <option value="">Choose…</option>
+              <option value="return_answer">Return that answer, no Arbiter (1 call)</option>
+              <option value="arbiter_single_source">Arbiter assesses that answer (2 calls)</option>
+            </select>
+          </label>
+          <p class="meta">This only chooses how a single-source run ends. It does not allow one: that is the checkbox above.</p>
           <div class="row">
             <button id="workspaceSubmit" type="submit">Create</button>
             <button id="workspaceCancel" type="button" class="secondary hidden">Cancel edit</button>
@@ -104,6 +112,7 @@
             <button id="downloadRun" class="secondary hidden">Download run JSON</button>
           </div>
         </div>
+        <p id="singleSourceBanner" class="warning hidden"></p>
         <div id="arbiterMeta" class="meta"></div>
         <pre id="arbiterAnswer"></pre>
         <button id="retryArbiter" class="secondary hidden">Retry Arbiter only</button>

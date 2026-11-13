@@ -59,6 +59,19 @@ class SelectionTrace(BaseModel):
     single_source: bool = False
 
 
+# What happens when exactly one independent source answered. This never decides whether such
+# a run may start: only ``allow_single_source`` (or a quorum of 1) does that.
+SingleSourceMode = Literal["return_answer", "arbiter_single_source"]
+
+
+class SingleSourceAnswer(BaseModel):
+    """The lone delegate answer returned as the result of a single-source run."""
+
+    delegate: str
+    text: str
+    model: str | None = None
+
+
 class PanelRequest(BaseModel):
     question: str = Field(min_length=1)
     delegates: list[DelegateRequest] = Field(min_length=1)
@@ -108,6 +121,8 @@ class DeliberationRequest(BaseModel):
     # Explicit permission to run when only one independent source is available or answers,
     # although the quorum asks for more. Such a run is labelled and never reported as met.
     allow_single_source: bool = False
+    # Applies only once a single-source run is happening; it cannot permit one.
+    single_source_mode: SingleSourceMode = "return_answer"
     selection: SelectionTrace | None = None
 
 
@@ -116,6 +131,12 @@ class DeliberationResult(BaseModel):
     critic: DelegateResult | None = None
     arbiter: DelegateResult | None = None
     estimated_cost_usd: float | None = None
+    # True when exactly one independent source answered. The label is the one sentence used
+    # for this run everywhere: the console, the saved result and the Arbiter prompt.
+    single_source: bool = False
+    single_source_label: str | None = None
+    # Set when the run returned the delegate's answer instead of running an Arbiter.
+    single_source_answer: SingleSourceAnswer | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -131,6 +152,9 @@ class WorkspaceCreate(BaseModel):
     minimum_successes: int = Field(default=1, ge=1)
     auto_select_delegates: bool = False
     allow_single_source: bool = False
+    # Required when a workspace is saved (the API refuses a missing choice). Existing
+    # workspaces read as return_answer.
+    single_source_mode: SingleSourceMode | None = None
 
 
 class Workspace(WorkspaceCreate):
