@@ -26,7 +26,7 @@ A merged PR is not counted as proof: each row names a test that would fail witho
 
 ## Judge benchmark
 
-Attempted 2026-11-13 on free-tier groq: **3 of 144 trials, no decision.** Checkpoint `bench/judge/results.jsonl`; the quota stop is in `bench/judge/operational.jsonl` and is reported apart from any score. Resume command and details: `bench/judge/RESULTS.md`. There is still no Critic default.
+Attempted 2026-11-13 on free-tier groq: **6 of 144 trials, no decision.** Checkpoint `bench/judge/results.jsonl`; the quota stop is in `bench/judge/operational.jsonl` and is reported apart from any score. Resume command and details: `bench/judge/RESULTS.md`. There is still no Critic default.
 
 ## Acceptance (real providers, free keys, a copy of the real database)
 
