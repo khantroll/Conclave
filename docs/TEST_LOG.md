@@ -102,3 +102,27 @@ A final synthesis was produced successfully.
 Real-provider core orchestration: **PASS**.
 
 The MVP pipeline is now functionally validated with real model responses and a real final synthesis. Remaining work is reliability, provider-specific diagnostics, routing quality, and UX/product-value refinement rather than proving that the architecture can work.
+
+## 2026-11-13 — Real-provider acceptance run (partial)
+
+Commit `682c370` (main), Python 3.14, Windows. Providers (free tiers, prices configured as 0): groq (`openai/gpt-oss-120b`, family openai), openrouter-free (an alias; it answered as `recursive/flint-v1.0:free`, `nvidia/nemotron-3.5-super-vl:free`, `dots-studio/dots-3-note-preview:free` and others across calls), gemini (`gemini-3.6-flash`, google), mistral (`mistral-small-latest`). A **copy** of the real database was used; the live one was not touched.
+
+| # | Scenario | Result |
+|---|---|---|
+| 0 | Copy of the 2026-10 database opened | **PASS.** Backed up first (`.bak-0-...`), migrated, 12 runs readable. |
+| 1 | All healthy | **PARTIAL.** groq and openrouter-free answered (2 independent sources, quorum met, Critic and Arbiter succeeded, structure `format_ok`). The third provider failed every time: mistral HTTP 429 (3 attempts, rate_limit, as on 2026-10-09), gemini timed out at 60 s in runs although it answers short prompts in 2 to 4 s alone (503 capacity earlier). So no run had three answering providers; two families are not shown by the answering providers alone (openai via groq, and whatever model openrouter-free routed to). |
+| 2 | One delegate forced to fail with a wrong key | **PASS.** `groq-badkey`: 1 request, kind `auth`, not retried; the panel carried on. |
+| 3 | Primary Arbiter forced to fail, fallback used | **PASS.** The fallback groq answered; `prior_attempts` named `groq-badkey` with kind `auth`; ledger had a row for each. |
+| 4 | Two provider names on one model | **PASS.** `groq` and `groq-twin` counted as 1 source (2 sources in total with openrouter-free). |
+| 5 | Interrupted run resumed | **PASS.** Cancelled while openrouter-free was pending: groq's answer was kept, the other recorded as `cancelled`, both calls have ledger rows (the cut-off one `cancelled`); run `interrupted`. A delegate retry completed it (Critic and Arbiter ran). |
+| 6 | One retry | **PASS.** Linked into the chain (parent and root recorded), the successful delegate was not re-run; a further Critic retry joined the same chain. |
+| 7 | Saved judge prompts inspected for blinding | **PASS** on 4 runs: no provider name, model name, latency or error text in any Critic or Arbiter prompt; labels only. |
+| 8 | Ledger reconciled | **NOT RECONCILED.** Rows equal requests made (every scenario). Free tier, so billed is expected to be 0, but the providers' own usage or billing pages were **not** checked, so no difference is recorded. Token totals in the ledger matched the usage fields in the stored results only in the weak sense that both come from the same replies. |
+
+### Findings
+1. **openrouter-free sometimes returns a non-text answer** (a routed model with `content` null, here after about 29 s), which was a bare `malformed` failure. The adapter now accepts content given as a list of text parts and, for a null answer, says whether the model ran out of its output budget (`finish_reason: length`) and to raise `max_output_tokens`.
+2. **gemini timed out at 60 s inside runs** while answering in seconds alone; not explained (503 demand spikes on this model earlier).
+3. The blind prompts, error classes, fallback trail, chain linking and cancellation behaved as designed against real providers.
+
+### Status
+Not complete. Outstanding: a run with three providers answering from two named families, and reconciliation against the providers' own pages.
