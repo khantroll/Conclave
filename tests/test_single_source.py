@@ -410,7 +410,7 @@ async def test_legacy_run_that_counted_one_source_twice_is_judged_by_todays_rule
 
 
 def run_describe_refresh(cases):
-    """Run the console's real describeRefresh in Node, on result-shaped objects."""
+    """Run the console's real describeRefresh (web/render.js) in Node on result-shaped objects."""
     import json
     import shutil
     import subprocess
@@ -419,16 +419,12 @@ def run_describe_refresh(cases):
     if node is None:
         pytest.skip("node is not installed")
     script = (
-        "const fs = require('fs');"
-        "const src = fs.readFileSync(process.argv[1], 'utf8');"
-        "const m = src.match(/function describeRefresh\\(result, stage\\) \\{[\\s\\S]*?\\n\\}/);"
-        "if (!m) { console.error('describeRefresh not found'); process.exit(2); }"
-        "const fn = new Function(m[0] + '; return describeRefresh;')();"
+        "const render = require(process.argv[1]);"
         "const cases = JSON.parse(process.argv[2]);"
-        "console.log(JSON.stringify(cases.map(c => fn(c.result, c.stage))));"
+        "console.log(JSON.stringify(cases.map(c => render.describeRefresh(c.result, c.stage))));"
     )
     done = subprocess.run(
-        [node, "-e", script, str(WEB / "app.js"), json.dumps(cases)],
+        [node, "-e", script, str(WEB / "render.js"), json.dumps(cases)],
         capture_output=True,
         text=True,
     )

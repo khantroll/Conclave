@@ -5,6 +5,17 @@ let activeWorkspaceId = null;
 let editingWorkspaceId = null;
 let currentRunId = null;
 
+// Pure string and HTML builders live in render.js so they can be tested without a browser.
+const {
+  escapeHtml,
+  summarizeQuestion,
+  formatCost,
+  formatStageMeta,
+  describeRefresh,
+  delegateCardsHtml,
+  historyHtml,
+} = ConclaveRender;
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: {"Content-Type": "application/json", ...(options.headers || {})},
@@ -141,7 +152,7 @@ async function loadWorkspaces() {
   workspaces = await (await api("/api/workspaces")).json();
   const select = $("workspaceSelect");
   select.innerHTML = workspaces.length
-    ? workspaces.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join("")
+    ? workspaces.map(w => `<option value="${escapeHtml(w.id)}">${escapeHtml(w.name)}</option>`).join("")
     : '<option value="">No workspaces yet</option>';
 
   if (activeWorkspaceId && workspaces.some(w => w.id === activeWorkspaceId)) {
@@ -480,38 +491,11 @@ function renderResult(result, runId = null) {
   );
 
   $("delegatesSection").classList.remove("hidden");
-  $("delegateCards").innerHTML = result.panel.delegates.map(d => {
-    const failed = d.status !== "succeeded";
-    const body = d.raw_response || d.error || d.status;
-    const meta = formatStageMeta(d);
-    const retry = failed && currentRunId
-      ? `<button class="secondary retry-delegate" data-name="${escapeHtml(d.name)}">Retry this delegate</button>`
-      : "";
-    const prompt = d.prompt
-      ? `<details class="prompt-details"><summary>Show exact Delegate prompt</summary><pre>${escapeHtml(d.prompt)}</pre></details>`
-      : "";
-    return `
-      <article class="delegate ${failed ? "failed" : ""}">
-        <strong>${escapeHtml(d.name)}</strong>
-        <div class="meta">${escapeHtml(meta)}</div>
-        <pre>${escapeHtml(body)}</pre>
-        ${prompt}
-        ${retry}
-      </article>`;
-  }).join("");
+  $("delegateCards").innerHTML = delegateCardsHtml(result.panel.delegates, Boolean(currentRunId));
 
   document.querySelectorAll(".retry-delegate").forEach(button => {
     button.addEventListener("click", () => retryDelegate(button.dataset.name, button));
   });
-}
-
-// What a retry actually refreshed, read from the returned result rather than assumed.
-function describeRefresh(result, stage) {
-  if (result.single_source_answer) return "single-source answer returned; no Critic or Arbiter ran";
-  if (result.single_source) return "the Arbiter assessed the single source; no Critic ran";
-  if (!result.panel.synthesizeable) return "quorum is still not met, so no Critic or Arbiter ran";
-  if (stage === "arbiter") return "Arbiter refreshed; the panel and Critic were kept";
-  return result.critic ? "Critic and Arbiter refreshed" : "Arbiter refreshed";
 }
 
 async function retryDelegate(name, button) {
@@ -574,24 +558,7 @@ async function loadAllHistory() {
 
 function renderHistory(targetId, runs) {
   const target = $(targetId);
-  target.innerHTML = runs.length
-    ? runs.map(run => {
-        const title = summarizeQuestion(run.question, 78);
-        const preview = summarizeQuestion(run.question, 150);
-        const panel = run.result?.panel;
-        const delegateCount = panel?.delegates?.length ?? 0;
-        const succeeded = panel?.successful_count ?? 0;
-        const critic = run.result?.critic?.status === "succeeded" ? "Critic ✓" : (run.result?.critic ? "Critic ✕" : "No Critic");
-        const arbiter = run.result?.arbiter?.status === "succeeded" ? "Arbiter ✓" : (run.result?.arbiter ? "Arbiter ✕" : "No Arbiter");
-        const cost = formatCost(run.result?.estimated_cost_usd);
-        return `
-        <div class="history-item" data-run-id="${run.id}">
-          <strong>${escapeHtml(title)}</strong>
-          <div class="history-preview">${escapeHtml(preview)}</div>
-          <small>${new Date(run.created_at).toLocaleString()} · ${succeeded}/${delegateCount} delegates · ${critic} · ${arbiter}${run.workspace_id ? "" : " · detached"}${cost ? " · " + cost : ""}</small>
-        </div>`;
-      }).join("")
-    : "<p>No runs yet.</p>";
+  target.innerHTML = historyHtml(runs, value => new Date(value).toLocaleString());
 
   target.querySelectorAll(".history-item").forEach(item => {
     item.addEventListener("click", async () => {
@@ -618,46 +585,6 @@ async function downloadCurrentRun() {
   } catch (error) {
     $("status").textContent = error.message;
   }
-}
-
-function summarizeQuestion(question, maxLength) {
-  const normalized = String(question || "").replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd() + "…";
-}
-
-function formatStageMeta(stage) {
-  const parts = [stage.status];
-  if (stage.model) parts.push(stage.model);
-  if (stage.latency_ms != null) parts.push(`${stage.latency_ms} ms`);
-  if (stage.attempts > 1) parts.push(`${stage.attempts} attempts`);
-  const promptTokens = stage.usage?.prompt_tokens;
-  const completionTokens = stage.usage?.completion_tokens;
-  const totalTokens = stage.usage?.total_tokens;
-  if (totalTokens != null) {
-    parts.push(`${totalTokens} tokens`);
-  } else if (promptTokens != null || completionTokens != null) {
-    parts.push(`${promptTokens || 0} in / ${completionTokens || 0} out`);
-  }
-  const cost = formatCost(stage.estimated_cost_usd);
-  if (cost) parts.push(cost);
-  return parts.join(" · ");
-}
-
-function formatCost(value) {
-  if (value == null || Number.isNaN(Number(value))) return "";
-  const amount = Number(value);
-  if (amount < 0.01) return `$${amount.toFixed(5)}`;
-  return `$${amount.toFixed(3)}`;
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 $("workspaceSelect").addEventListener("change", async (event) => {

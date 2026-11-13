@@ -240,3 +240,11 @@ CONCLAVE_ALLOWED_HOSTS=conclave.lan
 ```
 
 Only do this on a network you trust. `extra_headers` in `conclave.json` can hold secrets, and prompts and responses are stored in plain text.
+
+### Secrets in stored errors
+
+Provider error bodies and transport errors are saved with the run, and some providers echo the credential they rejected. Before an error is stored or returned, Conclave replaces these values with `[redacted]`: the provider's API key (always, whatever its length), and every `extra_headers` value whose header name contains `auth`, `key`, `token`, `secret`, `cookie`, `password` or `credential`, or whose value is at least 8 characters. A short value under a harmless-looking header name (for example `X-Feature: true`) is left alone, because redacting it would garble ordinary text; put anything secret under a header name that says so, or make it at least 8 characters. Model *responses* are never altered: they are stored exactly as received.
+
+### Provider-reported metadata
+
+The model name a provider reports comes from its reply, so it is untrusted too. In the Critic and Arbiter prompts it appears on the `Response A: name (model)` line outside the response markers, where it is reduced to one short line: control, bidirectional and zero-width characters are shown as visible escapes, whitespace (including newlines) is collapsed, marker sequences are broken up, and it is cut at 80 characters. The stored result keeps the model name unchanged.

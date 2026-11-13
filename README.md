@@ -142,6 +142,12 @@ Conclave has **no login**. Keep the server on loopback (`127.0.0.1`, the uvicorn
 
 The server refuses requests whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`, and refuses any request other than `GET` and `HEAD` whose `Origin` differs from its `Host`, so a web page open in your browser cannot make it spend provider calls. If you deliberately reach it under another name, list that host in `CONCLAVE_ALLOWED_HOSTS` (comma-separated); that widens who can use it, so only do it on a network you trust.
 
+### Untrusted model output
+
+Everything a model returns is treated as data. It is wrapped in per-run markers before a later model sees it, with marker sequences and control or bidirectional characters escaped and each response capped in length; it is never parsed to decide what Conclave does; and the console shows it as escaped text. An adversarial suite (`tests/adversarial/` and `web/render.test.mjs`, about 50 hostile texts in 11 classes run through every route model text can take, including retries and fallback judges) checks that none of it changes which providers are called, how many calls are made, any count, status or flag, or what is saved, that it stays inside its markers, that a fake API key never reaches a prompt, stored run, run log or response, and that the console renders it inertly.
+
+What this shows is that Conclave grants model text **no authority**. It does **not** show that a real judge model ignores persuasion: a judge may still be swayed by a convincing lie placed inside its own marked block. That is a property of the model, not of this code, and it is measured separately (roadmap item P1-13). Add a hostile text by appending an entry to `tests/adversarial/corpus.json`; no code change is needed.
+
 ## Likely architecture
 
 The current direction is intentionally provisional.

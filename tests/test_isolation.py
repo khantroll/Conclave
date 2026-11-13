@@ -163,7 +163,12 @@ def test_canary_suite_leaves_a_configured_directory_untouched(tmp_path):
     }
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(TESTS_DIR)],
+            [
+                sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(TESTS_DIR),
+                # The adversarial suite is large and runs under the same isolation fixtures in
+                # the outer run; repeating it here would only double the time.
+                "--ignore", str(TESTS_DIR / "adversarial"),
+            ],
             cwd=work,
             env=env,
             capture_output=True,
