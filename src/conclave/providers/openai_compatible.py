@@ -19,6 +19,7 @@ from .base import (
 )
 
 
+_TRANSIENT_429 = ("temporarily rate-limited", "retry shortly", "temporarily unavailable")
 _SENSITIVE_HEADER = re.compile(r"auth|key|token|secret|cookie|password|credential", re.IGNORECASE)
 
 
@@ -300,10 +301,15 @@ class OpenAICompatibleProvider(Provider):
             return "auth"
         if status == 429:
             body = response.text.lower()
-            if any(word in body for word in ("insufficient_quota", "quota", "billing")):
-                return "quota"
             wait = OpenAICompatibleProvider._retry_after_seconds(response)
             if wait is not None and wait > QUOTA_RETRY_AFTER_SECONDS:
+                return "quota"
+            # A gateway sometimes reports a shared upstream pool being busy with an error code
+            # that says "insufficient_quota" while its message says to retry shortly. That is a
+            # rate limit, not an empty account, so it is retried.
+            if any(phrase in body for phrase in _TRANSIENT_429):
+                return "rate_limit"
+            if any(word in body for word in ("insufficient_quota", "quota", "billing")):
                 return "quota"
             return "rate_limit"
         if status in {502, 503, 504}:

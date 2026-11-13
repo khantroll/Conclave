@@ -213,7 +213,7 @@ Every failed provider call is classified, and the kind is saved as `error_kind` 
 | kind | what it is | retried |
 | --- | --- | --- |
 | `auth` | HTTP 401 or 403 | no |
-| `quota` | a 429 whose body contains `insufficient_quota`, `quota` or `billing`, or whose `Retry-After` is over 60 seconds | no |
+| `quota` | a 429 whose body contains `insufficient_quota`, `quota` or `billing`, or whose `Retry-After` is over 60 seconds (unless the body says the provider is *temporarily rate-limited* or to *retry shortly*, as OpenRouter does when a shared upstream pool is busy: that is a rate limit) | no |
 | `rate_limit` | any other 429 | yes |
 | `capacity` | HTTP 502, 503 or 504 | yes |
 | `bad_request` | any other 4xx | no |
