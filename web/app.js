@@ -14,6 +14,8 @@ const {
   describeRefresh,
   delegateCardsHtml,
   judgeOverlapNotice,
+  positionsHtml,
+  INSUFFICIENT_NOTICE,
   sourceSummary,
   AGREEMENT_NOTE,
   historyHtml,
@@ -458,6 +460,13 @@ function renderResult(result, runId = null) {
   currentRunId = runId || currentRunId;
   $("runId").textContent = currentRunId ? `run ${currentRunId.slice(0, 8)}` : "";
   $("downloadRun").classList.toggle("hidden", !currentRunId);
+
+  // Each delegate's own stated position, above the synthesis, whatever the Arbiter wrote.
+  const positions = positionsHtml(result.positions);
+  $("positionsSection").classList.toggle("hidden", !positions);
+  $("positionsTable").innerHTML = positions;
+  $("insufficientNotice").classList.toggle("hidden", !result.insufficient_evidence);
+  $("insufficientNotice").textContent = result.insufficient_evidence ? INSUFFICIENT_NOTICE : "";
 
   const arbiter = result.arbiter;
   // A single-source run may return the lone delegate's answer instead of an Arbiter synthesis.

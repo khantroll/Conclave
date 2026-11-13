@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from .models import DelegateResult, DelegateStatus, SourceGroup
+from .positions import strip_position_lines
 
 SAME_CONFIG = "same_config"
 SAME_REPORTED_MODEL = "same_reported_model"
@@ -232,7 +233,7 @@ def _ngrams(words: list[str]) -> frozenset[tuple[str, ...]]:
 
 
 def _prepare(text: str | None) -> tuple[str, frozenset[tuple[str, ...]]]:
-    normalized = normalize_text(text)
+    normalized = normalize_text(strip_position_lines(text))
     return normalized, _ngrams(normalized.split())
 
 

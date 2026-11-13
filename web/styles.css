@@ -236,3 +236,23 @@ summary { cursor: pointer; font-weight: 700; }
   font-size: .85rem;
   color: #9fb0c8;
 }
+table.positions {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .9rem;
+}
+table.positions th,
+table.positions td {
+  text-align: left;
+  vertical-align: top;
+  padding: .35rem .5rem;
+  border-bottom: 1px solid #2d3440;
+  overflow-wrap: anywhere;
+}
+table.positions tr.failed td {
+  color: #aeb7c6;
+}
+#insufficientNotice {
+  margin: .4rem 0;
+  font-weight: 600;
+}

@@ -72,6 +72,22 @@ class SingleSourceAnswer(BaseModel):
     model: str | None = None
 
 
+class PositionRow(BaseModel):
+    """One delegate's own stated conclusion and confidence, read from its own answer only."""
+
+    delegate: str
+    # The label the judges saw (None when the delegate did not answer or no judge could run).
+    label: str | None = None
+    # 1-based number of the independent source the delegate belongs to.
+    source: int | None = None
+    status: str
+    conclusion: str | None = None
+    # high | medium | low | insufficient evidence; None when missing or unrecognized.
+    confidence: str | None = None
+    # What the Confidence line said when it was not one of the four levels.
+    confidence_text: str | None = None
+
+
 class PanelRequest(BaseModel):
     question: str = Field(min_length=1)
     delegates: list[DelegateRequest] = Field(min_length=1)
@@ -149,6 +165,10 @@ class DeliberationResult(BaseModel):
     # Labels of responses that come from the same source as the Critic or the Arbiter that
     # judged them. Judges are not told, since that would undo the blinding.
     judge_overlaps: list[str] = Field(default_factory=list)
+    # One row per delegate, shown whatever the Arbiter wrote. Empty on runs saved before this.
+    positions: list[PositionRow] = Field(default_factory=list)
+    # Every independent source says "insufficient evidence", or the Arbiter's synthesis begins so.
+    insufficient_evidence: bool = False
 
 
 class WorkspaceCreate(BaseModel):

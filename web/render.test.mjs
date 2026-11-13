@@ -174,3 +174,38 @@ test("a merged group with an unknown reason still says it counts as one", () => 
 test("the agreement sentence is fixed", () => {
   assert.equal(render.AGREEMENT_NOTE, "Agreement between responses is not evidence of correctness.");
 });
+
+for (const fixture of fixtures) {
+  test(`positions table is inert and faithful: ${fixture.id}`, () => {
+    const text = fixture.text;
+    const make = (v) => [
+      { delegate: v, label: "A", source: 1, status: "succeeded", conclusion: v, confidence: null, confidence_text: v },
+      { delegate: "b", label: "B", source: 2, status: "succeeded", conclusion: v, confidence: "high", confidence_text: null },
+      { delegate: v, label: null, source: null, status: "failed", conclusion: null, confidence: null, confidence_text: null },
+    ];
+    const hostile = render.positionsHtml(make(text));
+    const control = render.positionsHtml(make("x"));
+    assertInert(hostile, control, fixture.id);
+    assert.ok(decode(hostile).includes(text), `${fixture.id}: text was altered`);
+  });
+}
+
+test("the positions table shows every row, 'not stated' and failed delegates", () => {
+  const html = render.positionsHtml([
+    { delegate: "a", label: "B", source: 1, status: "succeeded", conclusion: "Yes", confidence: "high" },
+    { delegate: "b", label: "A", source: 2, status: "succeeded", conclusion: null, confidence: null },
+    { delegate: "c", label: "C", source: 3, status: "succeeded", conclusion: "Maybe", confidence: null, confidence_text: "90%" },
+    { delegate: "d", label: null, source: null, status: "failed" },
+  ]);
+  assert.equal((html.match(/<tr/g) || []).length, 5); // header + 4
+  assert.match(html, /not stated/);
+  assert.match(html, /90% \(not a recognized level\)/);
+  assert.match(html, /did not answer \(failed\)/);
+  assert.match(html, /<td>S2<\/td>/);
+  assert.equal(render.positionsHtml([]), "");
+  assert.equal(render.positionsHtml(undefined), "");
+});
+
+test("the insufficient-evidence notice is fixed text", () => {
+  assert.match(render.INSUFFICIENT_NOTICE, /^Insufficient evidence/);
+});

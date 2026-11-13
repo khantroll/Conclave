@@ -7,6 +7,14 @@ from collections.abc import Iterable
 from .models import DelegateResult, DelegateStatus, SourceGroup
 
 
+POSITION_REQUEST = (
+    "End your answer with exactly these two final lines, so your position can be shown "
+    "next to the others:\n"
+    "Conclusion: <one sentence>\n"
+    "Confidence: high | medium | low | insufficient evidence"
+)
+
+
 def build_delegate_prompt(
     *,
     question: str,
@@ -29,6 +37,7 @@ def build_delegate_prompt(
         "uncertainties, and call out information that would materially change your conclusion. "
         "Do not invent agreement with other delegates; you cannot see their responses."
     )
+    sections.append(POSITION_REQUEST)
     return "\n\n".join(sections)
 
 
