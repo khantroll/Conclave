@@ -325,7 +325,7 @@ def test_auto_select_on_a_simple_question_costs_at_most_two_calls(make):
 
 def test_saving_a_workspace_requires_an_explicit_single_source_mode(tmp_path):
     client = TestClient(create_app(config=ConclaveConfig(), workspace_store=WorkspaceStore(tmp_path / "t.db")))
-    body = {"name": "w", "delegates": ["demo-a"], "arbiter": "demo-arbiter"}
+    body = {"name": "w", "delegates": ["demo-a"], "arbiter": "demo-arbiter", "critic": None}
     refused = client.post("/api/workspaces", json=body)
     assert refused.status_code == 422
     assert "single_source_mode is required" in refused.json()["detail"]

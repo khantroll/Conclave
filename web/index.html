@@ -42,7 +42,15 @@
           <label>Delegate roles <small>one per line: provider = role/instructions</small>
             <textarea id="workspaceRoles" rows="5" placeholder="openai = Architect\nclaude = Skeptical reviewer\ngemini = Researcher"></textarea>
           </label>
-          <label>Critic<input id="workspaceCritic" placeholder="mistral"></label>
+          <label>Critic
+            <select id="workspaceCriticMode" required>
+              <option value="">Choose…</option>
+              <option value="none">No Critic: the Arbiter judges alone</option>
+              <option value="provider">Use a Critic: the provider named below</option>
+            </select>
+          </label>
+          <p class="meta">There is no default. Whether a Critic improves the answer has not been measured yet, so the choice is yours.</p>
+          <label>Critic provider <small>used when you chose a Critic</small><input id="workspaceCritic" placeholder="mistral"></label>
           <label>Critic fallbacks <small>comma-separated; tried in order if the primary Critic fails</small>
             <input id="workspaceCriticFallbacks" placeholder="openrouter-free, groq">
           </label>

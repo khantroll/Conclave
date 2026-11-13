@@ -151,6 +151,21 @@
     return lines;
   }
 
+  // The Critic has no default: the form must say "none" or name a provider. Returns the value to
+  // send (a provider name, or null for no Critic) or an error to show instead.
+  function criticChoice(mode, name) {
+    if (mode === "none") return { ok: true, critic: null };
+    if (mode === "provider") {
+      const provider = (name || "").trim();
+      if (!provider) return { ok: false, error: "Name the Critic provider, or choose No Critic." };
+      return { ok: true, critic: provider };
+    }
+    return {
+      ok: false,
+      error: "Choose whether to use a Critic. There is no default: its value has not been measured yet.",
+    };
+  }
+
   const AGREEMENT_NOTE = "Agreement between responses is not evidence of correctness.";
 
   const MERGE_REASONS = {
@@ -299,6 +314,7 @@
     describeRefresh,
     delegateCardsHtml,
     judgeOverlapNotice,
+    criticChoice,
     describeCost,
     costLines,
     structureHtml,

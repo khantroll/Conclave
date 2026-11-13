@@ -162,6 +162,10 @@ Model availability can change. If a provider Test button reports a model-not-fou
 
 **Connections.** Every database connection is opened and closed within the operation that needs it.
 
+## Choosing a Critic
+
+A workspace must say whether it uses a Critic: `critic` is required when a workspace is saved or replaced, as a provider name or as an explicit `null` for none (HTTP 422 if it is left out). There is no default because the Critic's value has not been measured: `bench/judge/` is a benchmark that compares the Arbiter alone with the Critic then the Arbiter on real judge models, with a decision rule fixed in advance, but it spends money and has not been run. Workspaces saved before this rule are not changed. In the console the Critic field is a required choice between "No Critic" and "Use a Critic" with a provider name. The single-source mode follows the same rule.
+
 ## Retry chains
 
 A retry (of a delegate, the Critic or the Arbiter) is saved as a new run, and the runs are linked. Each run has `parent_run_id` (the run it retried; none for a run that is not a retry) and `chain_root_id` (the first run of the chain; a run that is not a retry is its own root). A retry reuses the chain's seed, so the response labels and their order, and the markers in the prompts, stay the same across the chain. Runs saved before this change read as their own root. Every run is reachable from its root: `GET /api/runs/{id}/chain` lists the whole chain, oldest first.
