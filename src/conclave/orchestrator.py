@@ -101,6 +101,8 @@ class Orchestrator:
                 primary=request.critic,
                 fallbacks=request.critic_fallbacks,
                 prompt=build_critic_prompt(
+                    seed=request.seed,
+                    response_char_limit=request.judge_response_char_limit,
                     question=request.question,
                     delegate_results=panel.delegates,
                     workspace_context=request.workspace_context,
@@ -117,6 +119,8 @@ class Orchestrator:
                 )
 
         arbiter_prompt = build_arbiter_prompt(
+            seed=request.seed,
+            response_char_limit=request.judge_response_char_limit,
             question=request.question,
             delegate_results=panel.delegates,
             workspace_context=request.workspace_context,
@@ -187,6 +191,8 @@ class Orchestrator:
                 primary=request.critic,
                 fallbacks=request.critic_fallbacks,
                 prompt=build_critic_prompt(
+                    seed=request.seed,
+                    response_char_limit=request.judge_response_char_limit,
                     question=request.question,
                     delegate_results=panel.delegates,
                     workspace_context=request.workspace_context,
@@ -198,6 +204,8 @@ class Orchestrator:
             primary=request.arbiter,
             fallbacks=request.arbiter_fallbacks,
             prompt=build_arbiter_prompt(
+                seed=request.seed,
+                response_char_limit=request.judge_response_char_limit,
                 question=request.question,
                 delegate_results=panel.delegates,
                 workspace_context=request.workspace_context,
@@ -227,6 +235,8 @@ class Orchestrator:
             primary=request.critic,
             fallbacks=request.critic_fallbacks,
             prompt=build_critic_prompt(
+                seed=request.seed,
+                response_char_limit=request.judge_response_char_limit,
                 question=request.question,
                 delegate_results=prior_result.panel.delegates,
                 workspace_context=request.workspace_context,
@@ -237,6 +247,8 @@ class Orchestrator:
             primary=request.arbiter,
             fallbacks=request.arbiter_fallbacks,
             prompt=build_arbiter_prompt(
+                seed=request.seed,
+                response_char_limit=request.judge_response_char_limit,
                 question=request.question,
                 delegate_results=prior_result.panel.delegates,
                 workspace_context=request.workspace_context,
@@ -266,6 +278,8 @@ class Orchestrator:
             primary=request.arbiter,
             fallbacks=request.arbiter_fallbacks,
             prompt=build_arbiter_prompt(
+                seed=request.seed,
+                response_char_limit=request.judge_response_char_limit,
                 question=request.question,
                 delegate_results=prior_result.panel.delegates,
                 workspace_context=request.workspace_context,

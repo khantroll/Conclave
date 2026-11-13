@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
@@ -125,6 +126,8 @@ def create_app(
         workspace_id: str | None,
         response: Response,
     ) -> DeliberationResult:
+        if request.seed is None:
+            request = request.model_copy(update={"seed": secrets.token_hex(16)})
         # The row exists before any provider is called, and is updated after
         # each stage, so a cancel or crash keeps every answer already paid for.
         run = store.create_run(
@@ -345,9 +348,10 @@ def create_app(
                 status_code=409,
                 detail="This run predates request snapshots and cannot be retried safely",
             )
+        request = _seeded(run.request)
         try:
             result = await orchestrator.retry_delegate(
-                request=run.request,
+                request=request,
                 prior_result=run.result,
                 delegate_name=delegate_name,
             )
@@ -357,7 +361,7 @@ def create_app(
         return store.save_run(
             workspace_id=run.workspace_id,
             question=run.question,
-            request=run.request,
+            request=request,
             result=result,
         )
 
@@ -371,9 +375,10 @@ def create_app(
                 status_code=409,
                 detail="This run predates request snapshots and cannot be retried safely",
             )
+        request = _seeded(run.request)
         try:
             result = await orchestrator.retry_critic(
-                request=run.request,
+                request=request,
                 prior_result=run.result,
             )
         except ValueError as exc:
@@ -381,7 +386,7 @@ def create_app(
         return store.save_run(
             workspace_id=run.workspace_id,
             question=run.question,
-            request=run.request,
+            request=request,
             result=result,
         )
 
@@ -395,9 +400,10 @@ def create_app(
                 status_code=409,
                 detail="This run predates request snapshots and cannot be retried safely",
             )
+        request = _seeded(run.request)
         try:
             result = await orchestrator.retry_arbiter(
-                request=run.request,
+                request=request,
                 prior_result=run.result,
             )
         except ValueError as exc:
@@ -405,11 +411,18 @@ def create_app(
         return store.save_run(
             workspace_id=run.workspace_id,
             question=run.question,
-            request=run.request,
+            request=request,
             result=result,
         )
 
     return app
+
+
+def _seeded(request: DeliberationRequest) -> DeliberationRequest:
+    """Keep the stored seed so a retry rebuilds the same markers; legacy runs get one."""
+    if request.seed is not None:
+        return request
+    return request.model_copy(update={"seed": secrets.token_hex(16)})
 
 
 def _validate_workspace(request: WorkspaceCreate, provider_names: list[str]) -> None:
