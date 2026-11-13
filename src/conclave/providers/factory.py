@@ -12,7 +12,10 @@ from ..sources import ProviderIdentity
 def build_identities(configs: Iterable[ProviderConfig]) -> dict[str, ProviderIdentity]:
     return {
         config.name: ProviderIdentity(
-            base_url=config.base_url, model=config.model, router_alias=config.router_alias
+            base_url=config.base_url,
+            model=config.model,
+            router_alias=config.router_alias,
+            family=config.family,
         )
         for config in configs
     }

@@ -54,10 +54,12 @@ A provider entry may point directly to an OpenAI-compatible vendor API or to a g
 
 ## Independent sources and `router_alias`
 
-Agreement only means something when the answers come from different underlying models, so Conclave counts independent sources, not raw answers. Quorum (`minimum_successes`) is measured against that count. Two delegates are one source when either of these holds:
+Agreement only means something when the answers come from different underlying models, so Conclave counts independent sources, not raw answers. Quorum (`minimum_successes`) is measured against that count. Two delegates are one source when any of these holds:
 
 - Their configured identity is equal: the same `base_url` (scheme and host are case-insensitive, trailing slashes ignored) and the same `model`.
 - The model each one *reported* in its response is equal, after lowercasing, dropping a leading `vendor/` segment, and dropping a trailing date suffix such as `-2026-08-06` or `-20260806`. So `openai/gpt-x` and `gpt-x-2026-08-06` are the same model.
+
+- Their answers are copies or near-copies of each other (`near_duplicate_text`). Both answers are normalized (Unicode NFKC, lowercase, invisible characters and punctuation removed, whitespace collapsed), then compared as sets of 5-word sequences. They match when the texts are equal, when the Jaccard similarity is at least 0.50, or when one contains at least 90% of the other's sequences. The score is saved on the group as `similarity`. Han and kana characters count as one word each, since those scripts have no spaces. Matching is by connected group: if A resembles B and B resembles C, all three count as one source even when A and C share little, because each is a copy of the one before it. Answers under 20 normalized words are never compared, because short answers ("Yes.") coincide legitimately. This catches a gateway serving one model under two names, cached replies, and a deterministic model asked twice. The thresholds are constants in `sources.py`, checked against `tests/fixtures/near_duplicates.json` (30 labelled pairs, including unspaced Chinese: copies, light edits, padded copies, paraphrases by different models, and unrelated answers). The Jaccard threshold is 0.50 rather than a stricter value because a handful of changed words in a short answer removes many sequences; paraphrases score near 0 and shared boilerplate about 0.3.
 
 An empty or whitespace-only answer is a failure (`error_kind: "empty_response"`) and never counts.
 
@@ -65,7 +67,9 @@ A gateway name that picks a model per call, such as `openrouter/free`, should be
 
 A workspace may hold two delegates of one configured model (sampling a model twice can be deliberate). It saves with a warning, and the two answers count as one source. Each run records the grouping in `panel.sources` and the count in `panel.independent_source_count`, and the Critic and Arbiter prompts say which responses share a source. The direct endpoints `POST /api/deliberate` and `POST /api/panel` apply the same validation as workspaces: duplicate or unknown provider names are rejected with HTTP 422.
 
-Limits: this is based on configuration and the reported model name. It does not detect two different models trained on the same data, or near-identical answer text.
+An optional `family` field on a provider (for example `"openai"`, `"meta"`, `"mistral"`) records which model family it belongs to. It never changes source counting. Where known, each run stores `panel.families` and `panel.distinct_families`, the console shows a line such as "3 independent sources from 2 model families", and the Critic and Arbiter are told by label which responses share a family (never the family name). Both judge prompts and the console always carry one fixed sentence: "Agreement between responses is not evidence of correctness."
+
+Limits: text similarity catches copies. This is based on configuration, the reported model name and text overlap. It cannot detect correlation from shared training data or common sources, and no Conclave label claims independent verification.
 
 ## Quorum, automatic selection and single-source runs
 

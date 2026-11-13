@@ -27,6 +27,7 @@ _REASON_TEXT = {
     "same_config": "same configured model",
     "same_reported_model": "same reported model",
     "unresolved_router_alias": "unresolved router alias",
+    "near_duplicate_text": "near-duplicate answers",
 }
 
 

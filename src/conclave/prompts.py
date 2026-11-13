@@ -193,6 +193,45 @@ def source_note(
     return "\n".join(lines) if lines else None
 
 
+AGREEMENT_SENTENCE = "Agreement between responses is not evidence of correctness."
+
+
+def _join_labels(labels: list[str]) -> str:
+    return ", ".join(labels[:-1]) + f" and {labels[-1]}"
+
+
+def family_note(
+    delegate_results: Iterable[DelegateResult],
+    source_groups: Iterable[SourceGroup] | None,
+    families: dict[str, str] | None,
+    seed: str | None = None,
+) -> str | None:
+    """Name responses that share a model family, by label only (never the family itself).
+
+    Only families that span more than one source are worth a line: responses in one source
+    are already described by the source note.
+    """
+    if not families:
+        return None
+    label_of = {r.name: label for label, r in label_assignment(delegate_results, seed)}
+    group_of = {
+        name: index for index, group in enumerate(source_groups or []) for name in group.delegates
+    }
+    by_family: dict[str, list[str]] = {}
+    for name, family in families.items():
+        if name in label_of:
+            by_family.setdefault(family, []).append(name)
+    lines = []
+    for names in by_family.values():
+        if len(names) < 2 or len({group_of.get(n, n) for n in names}) < 2:
+            continue
+        lines.append(
+            f"Responses {_join_labels(sorted(label_of[n] for n in names))} come from the same "
+            "model family, so they may share training data and blind spots."
+        )
+    return "\n".join(sorted(lines)) if lines else None
+
+
 def build_critic_prompt(
     *,
     question: str,
@@ -201,6 +240,7 @@ def build_critic_prompt(
     seed: str | None = None,
     response_char_limit: int = DEFAULT_RESPONSE_CHAR_LIMIT,
     source_groups: list[SourceGroup] | None = None,
+    families: dict[str, str] | None = None,
 ) -> str:
     delegate_results = list(delegate_results)
     sections = [
@@ -217,6 +257,10 @@ def build_critic_prompt(
     note = source_note(delegate_results, source_groups, seed)
     if note:
         sections.append(note)
+    family = family_note(delegate_results, source_groups, families, seed)
+    if family:
+        sections.append(family)
+    sections.append(AGREEMENT_SENTENCE)
     sections.append(
         "Delegate responses:\n\n"
         + "\n\n".join(
@@ -242,6 +286,7 @@ def build_arbiter_prompt(
     response_char_limit: int = DEFAULT_RESPONSE_CHAR_LIMIT,
     source_groups: list[SourceGroup] | None = None,
     single_source_label: str | None = None,
+    families: dict[str, str] | None = None,
 ) -> str:
     delegate_results = list(delegate_results)
     sections = [
@@ -257,6 +302,10 @@ def build_arbiter_prompt(
     note = source_note(delegate_results, source_groups, seed)
     if note:
         sections.append(note)
+    family = family_note(delegate_results, source_groups, families, seed)
+    if family:
+        sections.append(family)
+    sections.append(AGREEMENT_SENTENCE)
     sections.append(
         "Delegate responses:\n\n"
         + "\n\n".join(

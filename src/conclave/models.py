@@ -83,8 +83,11 @@ class SourceGroup(BaseModel):
     """Successful delegates that count as one independent source."""
 
     delegates: list[str]
-    # same_config, same_reported_model or unresolved_router_alias; None for a lone delegate.
+    # same_config, same_reported_model, unresolved_router_alias or near_duplicate_text;
+    # None for a lone delegate.
     reason: str | None = None
+    # Highest text similarity (0 to 1) that merged members by near_duplicate_text.
+    similarity: float | None = None
 
 
 class PanelResult(BaseModel):
@@ -99,6 +102,10 @@ class PanelResult(BaseModel):
     sources: list[SourceGroup] = Field(default_factory=list)
     # None on runs saved before quorum reporting existed.
     quorum: QuorumReport | None = None
+    # Model family per answered delegate, where the provider's config names one.
+    families: dict[str, str] = Field(default_factory=dict)
+    # Distinct known families among the answered delegates. None when none is known.
+    distinct_families: int | None = None
 
 
 class DeliberationRequest(BaseModel):

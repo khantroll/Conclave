@@ -14,6 +14,8 @@ const {
   describeRefresh,
   delegateCardsHtml,
   judgeOverlapNotice,
+  sourceSummary,
+  AGREEMENT_NOTE,
   historyHtml,
 } = ConclaveRender;
 
@@ -465,6 +467,10 @@ function renderResult(result, runId = null) {
   // The label is the server's own sentence, so the console, the saved result and the
   // Arbiter prompt all describe the run identically.
   $("singleSourceBanner").textContent = result.single_source_label || "";
+  const summary = sourceSummary(result.panel);
+  $("sourceSummary").textContent = summary;
+  // Always shown with a result, including runs saved before source counting existed.
+  $("agreementNote").textContent = AGREEMENT_NOTE;
   const overlap = judgeOverlapNotice(result);
   $("judgeOverlapNotice").classList.toggle("hidden", !overlap);
   $("judgeOverlapNotice").textContent = overlap;

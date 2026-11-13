@@ -227,3 +227,12 @@ summary { cursor: pointer; font-weight: 700; }
   font-size: .78rem;
   color: #9fb0c8;
 }
+#sourceSummary {
+  white-space: pre-line;
+  margin: .3rem 0;
+}
+#agreementNote {
+  margin: .2rem 0;
+  font-size: .85rem;
+  color: #9fb0c8;
+}
