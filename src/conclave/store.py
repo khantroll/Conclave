@@ -3,11 +3,15 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from .ledger import summarize
 from .models import (
+    CallRow,
+    CostSummary,
     DeliberationRequest,
     DeliberationResult,
     DeliberationRun,
@@ -124,6 +128,41 @@ class WorkspaceStore:
                 CREATE INDEX IF NOT EXISTS idx_deliberation_runs_workspace_created
                 ON deliberation_runs(workspace_id, created_at DESC)
                 """
+            )
+            # The call ledger: one row per provider request. A new table, so an older database
+            # simply gains it; nothing existing is rewritten. run_id is null for connectivity tests.
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS provider_calls (
+                    id TEXT PRIMARY KEY,
+                    run_id TEXT,
+                    chain_root_id TEXT,
+                    stage TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    configured_model TEXT,
+                    reported_model TEXT,
+                    attempt_no INTEGER NOT NULL,
+                    outcome TEXT NOT NULL,
+                    http_status INTEGER,
+                    started_at TEXT NOT NULL,
+                    latency_ms INTEGER,
+                    prompt_tokens INTEGER,
+                    completion_tokens INTEGER,
+                    usage_json TEXT,
+                    price_in_per_million REAL,
+                    price_out_per_million REAL,
+                    estimated_cost_usd REAL,
+                    reported_cost_usd REAL,
+                    reported_cost_source TEXT,
+                    possibly_billed INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_provider_calls_run ON provider_calls(run_id)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_provider_calls_chain ON provider_calls(chain_root_id)"
             )
 
     def _ensure_column(
@@ -254,15 +293,19 @@ class WorkspaceStore:
         result: DeliberationResult,
         request: DeliberationRequest | None = None,
         workspace_id: str | None = None,
+        run_id: str | None = None,
     ) -> DeliberationRun:
-        """Insert a finished run in one step."""
+        """Insert a finished run in one step. ``run_id`` lets a caller fix the id beforehand,
+        so the calls made to produce the run can already be in the ledger under it."""
         run = self._insert_run(
             question=question,
             result=result,
             request=request,
             workspace_id=workspace_id,
             status="complete",
+            run_id=run_id,
         )
+        run.chain_cost = self.chain_cost(run.id)
         self._write_run_log(run)
         return run
 
@@ -272,6 +315,7 @@ class WorkspaceStore:
         question: str,
         request: DeliberationRequest | None = None,
         workspace_id: str | None = None,
+        run_id: str | None = None,
     ) -> DeliberationRun:
         """Insert a ``running`` row before any provider is called."""
         empty = DeliberationResult(
@@ -289,6 +333,7 @@ class WorkspaceStore:
             request=request,
             workspace_id=workspace_id,
             status="running",
+            run_id=run_id,
         )
 
     def _insert_run(
@@ -299,10 +344,11 @@ class WorkspaceStore:
         request: DeliberationRequest | None,
         workspace_id: str | None,
         status: str,
+        run_id: str | None = None,
     ) -> DeliberationRun:
         now = _now()
         run = DeliberationRun(
-            id=str(uuid4()),
+            id=run_id or str(uuid4()),
             workspace_id=workspace_id,
             question=question,
             request=request,
@@ -352,6 +398,13 @@ class WorkspaceStore:
             run = self.get_run(run_id)
             if run is not None:
                 self._write_run_log(run)
+
+    def discard_run(self, run_id: str) -> None:
+        """Remove a run that never started (only a still-``running`` row is removed)."""
+        with closing(self._connect()) as connection, connection:
+            connection.execute(
+                "DELETE FROM deliberation_runs WHERE id = ? AND status = 'running'", (run_id,)
+            )
 
     def mark_interrupted(self, run_id: str) -> None:
         """Mark a run interrupted, keeping every stage already stored."""
@@ -429,7 +482,60 @@ class WorkspaceStore:
             row = connection.execute(
                 "SELECT * FROM deliberation_runs WHERE id = ?", (run_id,)
             ).fetchone()
-        return self._run_from_row(row) if row else None
+        if not row:
+            return None
+        run = self._run_from_row(row)
+        run.chain_cost = self.chain_cost(run_id)
+        return run
+
+    # ------------------------------------------------------------------ the call ledger
+
+    def record_call(self, row: CallRow) -> None:
+        """Write one ledger row. Called as each provider request ends, so nothing is lost if a
+        run is later cancelled or the process stops."""
+        columns = list(CallRow.model_fields)
+        values = [int(v) if isinstance(v, bool) else v for v in (getattr(row, c) for c in columns)]
+        with closing(self._connect()) as connection, connection:
+            connection.execute(
+                f"INSERT INTO provider_calls ({', '.join(columns)}) "
+                f"VALUES ({', '.join('?' for _ in columns)})",
+                values,
+            )
+
+    def calls_for_run(self, run_id: str) -> list[CallRow]:
+        return self._calls("run_id = ?", (run_id,))
+
+    def calls_for_chain(self, chain_root_id: str) -> list[CallRow]:
+        return self._calls("chain_root_id = ?", (chain_root_id,))
+
+    def connectivity_calls(self) -> list[CallRow]:
+        return self._calls("run_id IS NULL", ())
+
+    def _calls(self, where: str, params: tuple) -> list[CallRow]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                f"SELECT * FROM provider_calls WHERE {where} ORDER BY started_at, rowid", params
+            ).fetchall()
+        return [
+            CallRow.model_validate({**dict(row), "possibly_billed": bool(row["possibly_billed"])})
+            for row in rows
+        ]
+
+    def chain_root_of(self, run_id: str) -> str:
+        """The root of the retry chain a run belongs to (the run itself when it has no calls
+        recorded under an earlier root)."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT chain_root_id FROM provider_calls "
+                "WHERE run_id = ? AND chain_root_id IS NOT NULL LIMIT 1",
+                (run_id,),
+            ).fetchone()
+        return row["chain_root_id"] if row else run_id
+
+    def chain_cost(self, run_id: str) -> CostSummary | None:
+        """Totals over every call in a run's retry chain, or None when none were recorded."""
+        rows = self.calls_for_chain(self.chain_root_of(run_id))
+        return summarize(rows) if rows else None
 
     def _workspace_from_row(self, row: sqlite3.Row) -> Workspace:
         return Workspace(

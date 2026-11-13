@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
+from uuid import uuid4
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
@@ -11,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .analyzer import analyze_request
 from .config import ConclaveConfig, load_config
+from .ledger import CallContext
 from .models import (
+    CallRow,
     AnalyzeRequest,
     DeliberationRequest,
     DeliberationResult,
@@ -161,6 +164,8 @@ def create_app(
     )
 
     store.mark_interrupted_runs()
+    # Every provider request, from any endpoint, is recorded in the call ledger as it happens.
+    orchestrator.ledger_sink = store.record_call
 
     async def _deliberate_and_store(
         *,
@@ -183,7 +188,11 @@ def create_app(
             store.update_run(run.id, partial, "running")
 
         try:
-            result = await orchestrator.deliberate(request, on_stage=on_stage)
+            result = await orchestrator.deliberate(
+                request,
+                on_stage=on_stage,
+                call_context=CallContext(run_id=run.id, chain_root_id=run.id),
+            )
         except BaseException:
             store.mark_interrupted(run.id)
             raise
@@ -383,6 +392,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="Deliberation run not found")
         return run
 
+    @app.get("/api/runs/{run_id}/calls", response_model=list[CallRow])
+    async def get_run_calls(run_id: str, chain: bool = False) -> list[CallRow]:
+        """The call-ledger rows of a run, or of its whole retry chain with ``?chain=true``."""
+        if store.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="Deliberation run not found")
+        if chain:
+            return store.calls_for_chain(store.chain_root_of(run_id))
+        return store.calls_for_run(run_id)
+
     @app.post(
         "/api/workspaces/{workspace_id}/deliberate",
         response_model=DeliberationResult,
@@ -462,8 +480,12 @@ def create_app(
             request=deliberation, workspace_id=workspace.id, response=response
         )
 
-    @app.post("/api/runs/{run_id}/delegates/{delegate_name}/retry", response_model=DeliberationRun)
-    async def retry_delegate(run_id: str, delegate_name: str) -> DeliberationRun:
+    async def _retry(run_id: str, error_status: int, call) -> DeliberationRun:
+        """Run one retry as a new run in the same chain.
+
+        The new run's row exists, as ``running``, before any provider is called, so every ledger
+        row written for it has a run to belong to even if the retry is cancelled or fails.
+        """
         run = store.get_run(run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="Deliberation run not found")
@@ -473,70 +495,56 @@ def create_app(
                 detail="This run predates request snapshots and cannot be retried safely",
             )
         request = _seeded(run.request)
-        try:
-            result = await orchestrator.retry_delegate(
-                request=request,
-                prior_result=run.result,
-                delegate_name=delegate_name,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-        return store.save_run(
-            workspace_id=run.workspace_id,
+        new_id, chain_root = str(uuid4()), store.chain_root_of(run_id)
+        store.create_run(
             question=run.question,
             request=request,
-            result=result,
+            workspace_id=run.workspace_id,
+            run_id=new_id,
+        )
+        context = CallContext(run_id=new_id, chain_root_id=chain_root)
+        try:
+            result = await call(request, run.result, context)
+        except ValueError as exc:
+            # Refused before any provider was called: there is nothing to keep.
+            store.discard_run(new_id)
+            raise HTTPException(status_code=error_status, detail=str(exc)) from exc
+        except BaseException:
+            store.mark_interrupted(new_id)
+            raise
+        store.update_run(new_id, result, "complete")
+        saved = store.get_run(new_id)
+        assert saved is not None
+        return saved
+
+    @app.post("/api/runs/{run_id}/delegates/{delegate_name}/retry", response_model=DeliberationRun)
+    async def retry_delegate(run_id: str, delegate_name: str) -> DeliberationRun:
+        return await _retry(
+            run_id,
+            404,
+            lambda request, prior, context: orchestrator.retry_delegate(
+                request=request, prior_result=prior, delegate_name=delegate_name, call_context=context
+            ),
         )
 
     @app.post("/api/runs/{run_id}/critic/retry", response_model=DeliberationRun)
     async def retry_critic(run_id: str) -> DeliberationRun:
-        run = store.get_run(run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail="Deliberation run not found")
-        if run.request is None:
-            raise HTTPException(
-                status_code=409,
-                detail="This run predates request snapshots and cannot be retried safely",
-            )
-        request = _seeded(run.request)
-        try:
-            result = await orchestrator.retry_critic(
-                request=request,
-                prior_result=run.result,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return store.save_run(
-            workspace_id=run.workspace_id,
-            question=run.question,
-            request=request,
-            result=result,
+        return await _retry(
+            run_id,
+            409,
+            lambda request, prior, context: orchestrator.retry_critic(
+                request=request, prior_result=prior, call_context=context
+            ),
         )
 
     @app.post("/api/runs/{run_id}/arbiter/retry", response_model=DeliberationRun)
     async def retry_arbiter(run_id: str) -> DeliberationRun:
-        run = store.get_run(run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail="Deliberation run not found")
-        if run.request is None:
-            raise HTTPException(
-                status_code=409,
-                detail="This run predates request snapshots and cannot be retried safely",
-            )
-        request = _seeded(run.request)
-        try:
-            result = await orchestrator.retry_arbiter(
-                request=request,
-                prior_result=run.result,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return store.save_run(
-            workspace_id=run.workspace_id,
-            question=run.question,
-            request=request,
-            result=result,
+        return await _retry(
+            run_id,
+            409,
+            lambda request, prior, context: orchestrator.retry_arbiter(
+                request=request, prior_result=prior, call_context=context
+            ),
         )
 
     return app

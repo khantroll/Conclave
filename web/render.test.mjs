@@ -276,3 +276,31 @@ test("stage meta shows the error kind and the fallback trail", () => {
   });
   assert.match(meta, /after: arbiter failed \(quota\), arbiter-2 timed_out \(timeout\), plain failed$/);
 });
+
+test("cost descriptions keep estimated and provider-reported apart and never show unknown as $0", () => {
+  const base = { total_calls: 7, estimated_total_usd: 0.0123, priced_calls: 5, unpriced_calls: 2, possibly_billed_unpriced_calls: 0, reported_total_usd: null, reported_calls: 0 };
+  assert.equal(render.describeCost(base), "Estimated $0.0123 (2 calls unpriced).");
+  assert.equal(
+    render.describeCost({ ...base, possibly_billed_unpriced_calls: 1, reported_total_usd: 0.0119, reported_calls: 5 }),
+    "Estimated $0.0123 (2 calls unpriced, 1 possibly billed). Provider-reported $0.0119 for 5 of 7 calls.",
+  );
+  assert.equal(render.describeCost({ ...base, unpriced_calls: 0 }), "Estimated $0.0123.");
+  assert.equal(
+    render.describeCost({ total_calls: 1, estimated_total_usd: null, priced_calls: 0, unpriced_calls: 1, possibly_billed_unpriced_calls: 1, reported_total_usd: null, reported_calls: 0 }),
+    "Cost unknown: 1 call unpriced, 1 possibly billed.",
+  );
+  assert.equal(render.describeCost(null), "");
+  assert.equal(render.describeCost({ total_calls: 0 }), "");
+});
+
+test("the chain total is shown only when it holds more calls than the run", () => {
+  const run = { total_calls: 2, estimated_total_usd: 0.01, unpriced_calls: 0 };
+  const chain = { total_calls: 5, estimated_total_usd: 0.04, unpriced_calls: 1, possibly_billed_unpriced_calls: 0 };
+  assert.deepEqual(render.costLines(run, run), ["This run: Estimated $0.0100."]);
+  assert.deepEqual(render.costLines(run, chain), [
+    "This run: Estimated $0.0100.",
+    "Whole retry chain: Estimated $0.0400 (1 call unpriced).",
+  ]);
+  assert.deepEqual(render.costLines(run, null), ["This run: Estimated $0.0100."]);
+  assert.deepEqual(render.costLines(null, null), []);
+});

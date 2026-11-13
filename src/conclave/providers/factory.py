@@ -48,6 +48,8 @@ def build_providers(configs: Iterable[ProviderConfig]) -> dict[str, Provider]:
                 max_output_tokens=config.max_output_tokens,
                 temperature=config.temperature,
                 max_prompt_chars=config.max_prompt_chars,
+                reported_cost_field=config.reported_cost_field,
+                reported_cost_header=config.reported_cost_header,
             )
             continue
 

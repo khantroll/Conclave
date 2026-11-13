@@ -112,6 +112,45 @@
     return `The Critic or Arbiter uses the same underlying source as ${list}, so it may have judged its own source's answer.`;
   }
 
+  // "Estimated $0.0123 (2 calls unpriced). Provider-reported $0.0119 for 5 of 7 calls." Estimated
+  // (tokens x configured price) and provider-reported are separate, and unknown is never $0.
+  // Ledger totals keep four significant decimals ($0.0123), five below a cent.
+  function formatLedgerAmount(value) {
+    const amount = Number(value);
+    return `$${amount.toFixed(amount < 0.01 ? 5 : 4)}`;
+  }
+
+  function describeCost(summary) {
+    if (!summary || !summary.total_calls) return "";
+    const n = summary.total_calls;
+    const plural = (count) => `${count} call${count === 1 ? "" : "s"}`;
+    const parts = [];
+    if (summary.estimated_total_usd != null) {
+      const unpriced = summary.unpriced_calls
+        ? ` (${plural(summary.unpriced_calls)} unpriced${summary.possibly_billed_unpriced_calls ? `, ${summary.possibly_billed_unpriced_calls} possibly billed` : ""})`
+        : "";
+      parts.push(`Estimated ${formatLedgerAmount(summary.estimated_total_usd)}${unpriced}.`);
+    } else {
+      parts.push(`Cost unknown: ${plural(n)} unpriced${summary.possibly_billed_unpriced_calls ? `, ${summary.possibly_billed_unpriced_calls} possibly billed` : ""}.`);
+    }
+    if (summary.reported_calls) {
+      parts.push(`Provider-reported ${formatLedgerAmount(summary.reported_total_usd)} for ${summary.reported_calls} of ${n} calls.`);
+    }
+    return parts.join(" ");
+  }
+
+  // The run's own calls, and the whole retry chain when it holds more calls than this run.
+  function costLines(runCost, chainCost) {
+    const lines = [];
+    const run = describeCost(runCost);
+    if (run) lines.push(`This run: ${run}`);
+    if (chainCost && (!runCost || chainCost.total_calls > runCost.total_calls)) {
+      const chain = describeCost(chainCost);
+      if (chain) lines.push(`Whole retry chain: ${chain}`);
+    }
+    return lines;
+  }
+
   const AGREEMENT_NOTE = "Agreement between responses is not evidence of correctness.";
 
   const MERGE_REASONS = {
@@ -259,6 +298,8 @@
     describeRefresh,
     delegateCardsHtml,
     judgeOverlapNotice,
+    describeCost,
+    costLines,
     structureHtml,
     structureNotices,
     labelLegend,

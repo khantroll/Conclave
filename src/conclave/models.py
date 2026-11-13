@@ -20,6 +20,53 @@ class DelegateRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
 
 
+class CallRow(BaseModel):
+    """One provider request (an HTTP attempt, or a call abandoned locally). See ``ledger``."""
+
+    id: str
+    run_id: str | None = None
+    chain_root_id: str | None = None
+    # delegate, critic, arbiter or connectivity_test
+    stage: str
+    provider: str
+    configured_model: str | None = None
+    reported_model: str | None = None
+    attempt_no: int = 1
+    # ok, http_error, transport_error, timeout or cancelled
+    outcome: str
+    http_status: int | None = None
+    started_at: str
+    latency_ms: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    usage_json: str | None = None
+    # The prices in force when the call was made, so a later price change cannot rewrite it.
+    price_in_per_million: float | None = None
+    price_out_per_million: float | None = None
+    # Tokens x price; None when usage or price is unknown (never zero).
+    estimated_cost_usd: float | None = None
+    # An amount the provider stated for this call, read from a field or header named in its
+    # config. None when the provider states nothing.
+    reported_cost_usd: float | None = None
+    reported_cost_source: str | None = None
+    # The request may have been charged (a timeout or a 5xx might have run it).
+    possibly_billed: bool = False
+
+
+class CostSummary(BaseModel):
+    """Totals over ledger rows. Estimated and provider-reported are never mixed, and an unknown
+    amount is a null and a count, never $0. The billed amount is not known to Conclave."""
+
+    total_calls: int = 0
+    estimated_total_usd: float | None = None
+    priced_calls: int = 0
+    unpriced_calls: int = 0
+    # Unpriced calls that might nonetheless have been charged.
+    possibly_billed_unpriced_calls: int = 0
+    reported_total_usd: float | None = None
+    reported_calls: int = 0
+
+
 class PriorAttempt(BaseModel):
     """An earlier failed attempt at a stage that a fallback then answered (or also failed)."""
 
@@ -205,6 +252,8 @@ class DeliberationResult(BaseModel):
     insufficient_evidence: bool = False
     # None for runs without a (multi-source) Arbiter answer, and for runs saved before this.
     arbiter_structure: ArbiterStructure | None = None
+    # Cost of the calls made by THIS run (a retry's own calls), from the call ledger.
+    cost: CostSummary | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -253,8 +302,8 @@ class DeliberationRun(BaseModel):
     created_at: str
     status: Literal["running", "complete", "interrupted"] = "complete"
     updated_at: str | None = None
-    status: Literal["running", "complete", "interrupted"] = "complete"
-    updated_at: str | None = None
+    # Cost of every call in this run's retry chain, from the call ledger (None for old runs).
+    chain_cost: CostSummary | None = None
 
 
 class RequestComplexity(StrEnum):
