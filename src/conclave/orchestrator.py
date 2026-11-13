@@ -56,6 +56,13 @@ class Orchestrator:
         """
         successful_count = sum(r.status == DelegateStatus.SUCCEEDED for r in delegates)
         sources = group_sources(delegates, self._identities)
+        families = {
+            r.name: self._identities[r.name].family
+            for r in delegates
+            if r.status == DelegateStatus.SUCCEEDED
+            and r.name in self._identities
+            and self._identities[r.name].family
+        }
         quorum = evaluate_quorum(
             required=minimum_successes,
             delegates=delegates,
@@ -71,6 +78,8 @@ class Orchestrator:
             independent_source_count=len(sources),
             sources=sources,
             quorum=quorum,
+            families=families,
+            distinct_families=len(set(families.values())) if families else None,
         )
 
     @property
@@ -201,6 +210,7 @@ class Orchestrator:
                     seed=request.seed,
                     response_char_limit=request.judge_response_char_limit,
                     source_groups=panel.sources,
+                    families=panel.families,
                     question=request.question,
                     delegate_results=panel.delegates,
                     workspace_context=request.workspace_context,
@@ -227,6 +237,7 @@ class Orchestrator:
                     seed=request.seed,
                     response_char_limit=request.judge_response_char_limit,
                     source_groups=panel.sources,
+                    families=panel.families,
                     question=request.question,
                     delegate_results=panel.delegates,
                     workspace_context=request.workspace_context,

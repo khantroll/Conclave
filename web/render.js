@@ -107,6 +107,33 @@
     return `The Critic or Arbiter uses the same underlying source as ${list}, so it may have judged its own source's answer.`;
   }
 
+  const AGREEMENT_NOTE = "Agreement between responses is not evidence of correctness.";
+
+  const MERGE_REASONS = {
+    same_config: "same configured model",
+    same_reported_model: "same reported model",
+    unresolved_router_alias: "unresolved router alias",
+    near_duplicate_text: "near-identical text",
+  };
+
+  // "3 independent sources from 2 model families", plus one line per merged group saying why.
+  // Plain text from the server's own fields (provider names, counts, reasons), never model text.
+  function sourceSummary(panel) {
+    if (!panel || panel.independent_source_count == null) return "";
+    const n = panel.independent_source_count;
+    let line = `${n} independent source${n === 1 ? "" : "s"}`;
+    const f = panel.distinct_families;
+    if (f != null) line += ` from ${f} model famil${f === 1 ? "y" : "ies"}`;
+    const lines = [line + "."];
+    (panel.sources || []).forEach((group) => {
+      if ((group.delegates || []).length < 2) return;
+      const why = MERGE_REASONS[group.reason] || "shared identity";
+      const score = group.similarity != null ? `, ${Math.round(group.similarity * 100)}% similar` : "";
+      lines.push(`${group.delegates.join(", ")} count as one source (${why}${score}).`);
+    });
+    return lines.join("\n");
+  }
+
   // The history list. `formatDate` is passed in so this stays free of locale and clock state.
   function historyHtml(runs, formatDate) {
     if (!runs.length) return "<p>No runs yet.</p>";
@@ -148,6 +175,8 @@
     describeRefresh,
     delegateCardsHtml,
     judgeOverlapNotice,
+    sourceSummary,
+    AGREEMENT_NOTE,
     historyHtml,
   };
 });

@@ -146,3 +146,31 @@ test("the judge-overlap notice names the labels, and is empty without an overlap
   assert.equal(render.judgeOverlapNotice(null), "");
   assert.match(render.judgeOverlapNotice({ judge_overlaps: ["A", "C"] }), /Response A, Response C/);
 });
+
+test("the source summary reports sources, families and why answers merged", () => {
+  const panel = {
+    independent_source_count: 2,
+    distinct_families: 1,
+    sources: [
+      { delegates: ["a", "b"], reason: "near_duplicate_text", similarity: 0.934 },
+      { delegates: ["c"], reason: null, similarity: null },
+    ],
+  };
+  assert.equal(
+    render.sourceSummary(panel),
+    "2 independent sources from 1 model family.\na, b count as one source (near-identical text, 93% similar)."
+  );
+  assert.equal(render.sourceSummary({ independent_source_count: 1, distinct_families: null, sources: [] }), "1 independent source.");
+  assert.equal(render.sourceSummary({ independent_source_count: 3, distinct_families: 2, sources: [] }), "3 independent sources from 2 model families.");
+  assert.equal(render.sourceSummary({ independent_source_count: null }), "");
+  assert.equal(render.sourceSummary(null), "");
+});
+
+test("a merged group with an unknown reason still says it counts as one", () => {
+  const out = render.sourceSummary({ independent_source_count: 1, sources: [{ delegates: ["a", "b"], reason: "future_reason" }] });
+  assert.match(out, /a, b count as one source \(shared identity\)/);
+});
+
+test("the agreement sentence is fixed", () => {
+  assert.equal(render.AGREEMENT_NOTE, "Agreement between responses is not evidence of correctness.");
+});

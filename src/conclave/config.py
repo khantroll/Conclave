@@ -24,6 +24,9 @@ class ProviderConfig(BaseModel):
     # A gateway name that picks a model per call (for example openrouter/free). Such a
     # provider is identified only by the model it reports.
     router_alias: bool = False
+    # Optional model family (for example openai, meta, mistral), used only to describe how
+    # many families a panel spans. It never changes how sources are counted.
+    family: str | None = None
     transient_max_retries: int = Field(default=2, ge=0, le=5)
     retry_backoff_seconds: float = Field(default=1.0, ge=0, le=30)
 

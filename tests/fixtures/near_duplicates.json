@@ -1,0 +1,215 @@
+{
+  "_comment": "Pairs of answers with the expected near-duplicate verdict. Used to tune and guard the thresholds in sources.py. 'merge' means the two answers must count as one source by text.",
+  "pairs": [
+    {
+      "id": "verbatim-1",
+      "kind": "verbatim copy",
+      "merge": true,
+      "a": "Remote work tends to raise individual productivity on focused tasks, because workers lose commute time and face fewer interruptions. The evidence on collaboration is weaker: spontaneous conversations and mentoring suffer when teams are distributed. Most firms that do well pick a hybrid schedule with a few fixed shared days.",
+      "b": "Remote work tends to raise individual productivity on focused tasks, because workers lose commute time and face fewer interruptions. The evidence on collaboration is weaker: spontaneous conversations and mentoring suffer when teams are distributed. Most firms that do well pick a hybrid schedule with a few fixed shared days."
+    },
+    {
+      "id": "verbatim-2",
+      "kind": "verbatim copy",
+      "merge": true,
+      "a": "Use a B-tree index on the column you filter by most often, and put the most selective column first in a composite index. Check the query plan before and after, because an index the planner ignores only costs write speed and disk space.",
+      "b": "Use a B-tree index on the column you filter by most often, and put the most selective column first in a composite index. Check the query plan before and after, because an index the planner ignores only costs write speed and disk space."
+    },
+    {
+      "id": "verbatim-3",
+      "kind": "verbatim copy",
+      "merge": true,
+      "a": "The main risk of the migration is data loss during the cutover window. Take a verified backup first, freeze writes, copy the data, run row counts and checksums on both sides, and keep the old system available for rollback for at least one full billing cycle.",
+      "b": "The main risk of the migration is data loss during the cutover window. Take a verified backup first, freeze writes, copy the data, run row counts and checksums on both sides, and keep the old system available for rollback for at least one full billing cycle."
+    },
+    {
+      "id": "case-punct-1",
+      "kind": "light edit (case, punctuation, markdown)",
+      "merge": true,
+      "a": "Remote work tends to raise individual productivity on focused tasks, because workers lose commute time and face fewer interruptions. The evidence on collaboration is weaker: spontaneous conversations and mentoring suffer when teams are distributed. Most firms that do well pick a hybrid schedule with a few fixed shared days.",
+      "b": "**Remote work** tends to raise individual productivity on focused tasks - because workers lose commute time and face fewer interruptions!\n\nThe evidence on collaboration is weaker; spontaneous conversations and mentoring suffer when teams are distributed.\n\nMOST FIRMS THAT DO WELL pick a *hybrid* schedule with a few fixed shared days."
+    },
+    {
+      "id": "case-punct-2",
+      "kind": "light edit (case, punctuation, markdown)",
+      "merge": true,
+      "a": "Use a B-tree index on the column you filter by most often, and put the most selective column first in a composite index. Check the query plan before and after, because an index the planner ignores only costs write speed and disk space.",
+      "b": "# Indexing\n\n- Use a `B-tree` index on the column you filter by most often, and put the most selective column first in a composite index.\n- Check the query plan before and after, because an index the planner ignores only costs write speed and disk space."
+    },
+    {
+      "id": "zero-width-1",
+      "kind": "light edit (invisible characters, full-width forms)",
+      "merge": true,
+      "a": "The main risk of the migration is data loss during the cutover window. Take a verified backup first, freeze writes, copy the data, run row counts and checksums on both sides, and keep the old system available for rollback for at least one full billing cycle.",
+      "b": "The main​ risk of the migration is da​ta loss during the cutover window. Ｔake a verified backup first, freeze writes, copy the data, run row counts and check⁠sums on both sides, and keep the old system available for rollback for at least one full billing cycle."
+    },
+    {
+      "id": "word-swap-1",
+      "kind": "light edit (a few words changed)",
+      "merge": true,
+      "a": "Solar panels pay for themselves faster in sunny regions with high electricity prices. Typical payback is six to ten years, and the panels keep producing for twenty-five years or more, so the lifetime savings are usually several times the upfront cost, provided the roof is in good condition and not shaded.",
+      "b": "Solar panels pay for themselves faster in sunny regions with high electricity prices. Typical payback is six to ten years, and the panels keep producing for twenty-five years or more, so the total savings are usually several times the initial cost, provided the roof is in good shape and not shaded."
+    },
+    {
+      "id": "word-swap-2",
+      "kind": "light edit (a few words changed)",
+      "merge": true,
+      "a": "Start the fine-tune with a small, clean dataset of a few hundred examples and a low learning rate. Hold out ten percent for evaluation, watch the evaluation loss rather than the training loss, and stop early once it stops improving, because overfitting shows up quickly on small data.",
+      "b": "Start the fine-tune with a small, clean dataset of a few hundred examples and a low learning rate. Hold out ten percent for evaluation, watch the validation loss rather than the training loss, and stop early once it stops improving, because overfitting appears quickly on small data."
+    },
+    {
+      "id": "word-swap-3",
+      "kind": "light edit (a sentence reordered, one dropped)",
+      "merge": true,
+      "a": "Interest rate cuts usually weaken a currency, because lower yields make holding it less attractive. The effect is strongest when the cut is unexpected. If markets had already priced it in, the currency often barely moves. Other factors such as trade balances and capital flows can easily outweigh it.",
+      "b": "Interest rate cuts usually weaken a currency, because lower yields make holding it less attractive. If markets had already priced it in, the currency often barely moves. The effect is strongest when the cut is unexpected. Other factors such as trade balances and capital flows can easily outweigh it."
+    },
+    {
+      "id": "padded-1",
+      "kind": "copy padded with about 10 percent extra text",
+      "merge": true,
+      "a": "Remote work tends to raise individual productivity on focused tasks, because workers lose commute time and face fewer interruptions. The evidence on collaboration is weaker: spontaneous conversations and mentoring suffer when teams are distributed. Most firms that do well pick a hybrid schedule with a few fixed shared days.",
+      "b": "Remote work tends to raise individual productivity on focused tasks, because workers lose commute time and face fewer interruptions. The evidence on collaboration is weaker: spontaneous conversations and mentoring suffer when teams are distributed. Most firms that do well pick a hybrid schedule with a few fixed shared days. In short, it depends on the kind of work and on how much a team relies on informal contact."
+    },
+    {
+      "id": "padded-2",
+      "kind": "copy padded with about 10 percent extra text",
+      "merge": true,
+      "a": "Use a B-tree index on the column you filter by most often, and put the most selective column first in a composite index. Check the query plan before and after, because an index the planner ignores only costs write speed and disk space.",
+      "b": "Great question. Use a B-tree index on the column you filter by most often, and put the most selective column first in a composite index. Check the query plan before and after, because an index the planner ignores only costs write speed and disk space. Let me know if you want an example."
+    },
+    {
+      "id": "padded-3",
+      "kind": "copy padded with about 10 percent extra text",
+      "merge": true,
+      "a": "The main risk of the migration is data loss during the cutover window. Take a verified backup first, freeze writes, copy the data, run row counts and checksums on both sides, and keep the old system available for rollback for at least one full billing cycle.",
+      "b": "Summary: the main risk of the migration is data loss during the cutover window. Take a verified backup first, freeze writes, copy the data, run row counts and checksums on both sides, and keep the old system available for rollback for at least one full billing cycle. Confidence: medium."
+    },
+    {
+      "id": "paraphrase-1",
+      "kind": "same position, different models (paraphrase)",
+      "merge": false,
+      "a": "Remote work tends to raise individual productivity on focused tasks, because workers lose commute time and face fewer interruptions. The evidence on collaboration is weaker: spontaneous conversations and mentoring suffer when teams are distributed. Most firms that do well pick a hybrid schedule with a few fixed shared days.",
+      "b": "Working from home generally helps people get deep, solo work done, since there is no commute and fewer drive-by distractions. Where it hurts is teamwork and learning from colleagues, which rely on informal contact. A hybrid arrangement with some mandatory in-office days is what most successful companies settle on."
+    },
+    {
+      "id": "paraphrase-2",
+      "kind": "same position, different models (paraphrase)",
+      "merge": false,
+      "a": "Use a B-tree index on the column you filter by most often, and put the most selective column first in a composite index. Check the query plan before and after, because an index the planner ignores only costs write speed and disk space.",
+      "b": "Index whichever column shows up most in your WHERE clauses, ordering composite indexes so the most discriminating field leads. Always compare EXPLAIN output with and without the index: unused indexes slow down inserts and take up storage while giving no benefit to reads."
+    },
+    {
+      "id": "paraphrase-3",
+      "kind": "same position, different models (paraphrase)",
+      "merge": false,
+      "a": "Solar panels pay for themselves faster in sunny regions with high electricity prices. Typical payback is six to ten years, and the panels keep producing for twenty-five years or more, so the lifetime savings are usually several times the upfront cost, provided the roof is in good condition and not shaded.",
+      "b": "Where the sun is strong and power is expensive, a rooftop solar system recoups its cost sooner, usually within roughly 6 to 10 years. Since modules last 25+ years, owners typically save multiples of what they paid, assuming an unshaded, sound roof."
+    },
+    {
+      "id": "paraphrase-4",
+      "kind": "same position, different models (paraphrase)",
+      "merge": false,
+      "a": "Interest rate cuts usually weaken a currency, because lower yields make holding it less attractive. The effect is strongest when the cut is unexpected. If markets had already priced it in, the currency often barely moves. Other factors such as trade balances and capital flows can easily outweigh it.",
+      "b": "A rate reduction normally pushes a currency down as investors chase better returns elsewhere. But a cut that traders already expected does little, and surprises do the most damage. Current account positions and capital flows can matter more than the rate itself."
+    },
+    {
+      "id": "paraphrase-5",
+      "kind": "same position, different models (paraphrase)",
+      "merge": false,
+      "a": "The main risk of the migration is data loss during the cutover window. Take a verified backup first, freeze writes, copy the data, run row counts and checksums on both sides, and keep the old system available for rollback for at least one full billing cycle.",
+      "b": "Cutover is where migrations go wrong, mainly through lost or corrupted records. Before starting, make a backup and prove it restores. Stop writes during the copy, then compare counts and hashes between old and new, and do not decommission the old system until a whole billing period has passed."
+    },
+    {
+      "id": "shared-boilerplate-1",
+      "kind": "different answers sharing an opening and a closing line",
+      "merge": false,
+      "a": "That is a good question and the honest answer is that it depends on your situation. Remote work raises focused output but hurts mentoring, so a hybrid schedule with fixed shared days is the usual compromise. I hope this helps, and please verify against your own data before deciding.",
+      "b": "That is a good question and the honest answer is that it depends on your situation. A four day week with full pay is shown to cut burnout without lowering output in most pilots, although the results come from small self-selected samples. I hope this helps, and please verify against your own data before deciding."
+    },
+    {
+      "id": "unrelated-1",
+      "kind": "unrelated answers",
+      "merge": false,
+      "a": "Remote work tends to raise individual productivity on focused tasks, because workers lose commute time and face fewer interruptions. The evidence on collaboration is weaker: spontaneous conversations and mentoring suffer when teams are distributed.",
+      "b": "Use a B-tree index on the column you filter by most often, and put the most selective column first in a composite index. Check the query plan before and after, because an index the planner ignores only costs write speed and disk space."
+    },
+    {
+      "id": "unrelated-2",
+      "kind": "unrelated answers",
+      "merge": false,
+      "a": "Solar panels pay for themselves faster in sunny regions with high electricity prices. Typical payback is six to ten years, and the panels keep producing for twenty-five years or more.",
+      "b": "Interest rate cuts usually weaken a currency, because lower yields make holding it less attractive. The effect is strongest when the cut is unexpected, and other factors can easily outweigh it."
+    },
+    {
+      "id": "unrelated-3",
+      "kind": "unrelated answers",
+      "merge": false,
+      "a": "Start the fine-tune with a small, clean dataset of a few hundred examples and a low learning rate. Hold out ten percent for evaluation and stop early once the evaluation loss stops improving.",
+      "b": "The main risk of the migration is data loss during the cutover window. Take a verified backup first, freeze writes, copy the data, and keep the old system available for rollback."
+    },
+    {
+      "id": "short-equal-1",
+      "kind": "short answers that coincide",
+      "merge": false,
+      "a": "Yes.",
+      "b": "Yes."
+    },
+    {
+      "id": "short-equal-2",
+      "kind": "short answers that coincide",
+      "merge": false,
+      "a": "No, that is not safe to do in production.",
+      "b": "No, that is not safe to do in production."
+    },
+    {
+      "id": "short-quote-1",
+      "kind": "short answer that happens to appear inside a long one",
+      "merge": false,
+      "a": "Use a B-tree index.",
+      "b": "Use a B-tree index on the column you filter by most often, and put the most selective column first in a composite index. Check the query plan before and after, because an index the planner ignores only costs write speed and disk space."
+    },
+    {
+      "id": "empty-1",
+      "kind": "empty or punctuation-only",
+      "merge": false,
+      "a": "...",
+      "b": "..."
+    },
+    {
+      "id": "common-phrase-1",
+      "kind": "unrelated long answers sharing one stock sentence",
+      "merge": false,
+      "a": "Remote work tends to raise individual productivity on focused tasks, because workers lose commute time and face fewer interruptions. The evidence on collaboration is weaker. As always, it depends on the context and on the people involved, so treat this as a starting point rather than a rule.",
+      "b": "Solar panels pay for themselves faster in sunny regions with high electricity prices, and the panels keep producing for twenty-five years or more. As always, it depends on the context and on the people involved, so treat this as a starting point rather than a rule."
+    },
+    {
+      "id": "cjk-verbatim",
+      "kind": "verbatim copy (Chinese, no spaces)",
+      "merge": true,
+      "a": "远程办公通常能提高个人在专注任务上的效率，因为员工省去了通勤时间，也较少被打断。但在协作方面证据较弱：团队分散时，自发的交流和师徒指导都会受到影响。大多数表现良好的公司会选择混合办公，并固定几天在办公室集中工作。",
+      "b": "远程办公通常能提高个人在专注任务上的效率，因为员工省去了通勤时间，也较少被打断。但在协作方面证据较弱：团队分散时，自发的交流和师徒指导都会受到影响。大多数表现良好的公司会选择混合办公，并固定几天在办公室集中工作。"
+    },
+    {
+      "id": "cjk-light-edit",
+      "kind": "light edit (Chinese, no spaces)",
+      "merge": true,
+      "a": "远程办公通常能提高个人在专注任务上的效率，因为员工省去了通勤时间，也较少被打断。但在协作方面证据较弱：团队分散时，自发的交流和师徒指导都会受到影响。大多数表现良好的公司会选择混合办公，并固定几天在办公室集中工作。",
+      "b": "远程办公往往能提高个人在专注任务上的效率，因为员工省去了通勤时间，也更少受到打断。但在协作方面证据较弱：团队分散时，自发的交流和师徒指导都会受到影响。大多数表现良好的公司会选择混合办公，并固定几天在办公室集中工作。"
+    },
+    {
+      "id": "cjk-unrelated",
+      "kind": "unrelated answers (Chinese, no spaces)",
+      "merge": false,
+      "a": "远程办公通常能提高个人在专注任务上的效率，因为员工省去了通勤时间，也较少被打断。但在协作方面证据较弱：团队分散时，自发的交流和师徒指导都会受到影响。大多数表现良好的公司会选择混合办公，并固定几天在办公室集中工作。",
+      "b": "为数据库的查询列建立索引时，应优先选择最常用于过滤的列，并把区分度最高的列放在复合索引的最前面。建立索引前后都要查看查询计划，因为规划器不使用的索引只会增加写入开销并占用磁盘空间。"
+    },
+    {
+      "id": "cjk-paraphrase",
+      "kind": "same position, different models (Chinese paraphrase)",
+      "merge": false,
+      "a": "远程办公通常能提高个人在专注任务上的效率，因为员工省去了通勤时间，也较少被打断。但在协作方面证据较弱：团队分散时，自发的交流和师徒指导都会受到影响。大多数表现良好的公司会选择混合办公，并固定几天在办公室集中工作。",
+      "b": "在家工作一般有利于完成需要深度专注的个人任务，没有了上下班路程，也少了随时打扰的人。不过团队协作和向同事学习依赖非正式的接触，这方面会受损。多数成功的企业最终采用部分时间到办公室的折中方案。"
+    }
+  ]
+}
