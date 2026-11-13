@@ -77,6 +77,20 @@ class PriorAttempt(BaseModel):
     attempts: int = Field(default=1, ge=1)
 
 
+class ProviderProvenance(BaseModel):
+    """What a provider was when an answer was produced. Immutable history, never a secret.
+
+    It is recorded with the answer, so changing the provider's configuration later (its model,
+    endpoint, family or router-alias flag) cannot reclassify an answer already given.
+    """
+
+    # scheme, host and path only: no credentials, query string or headers
+    endpoint: str | None = None
+    configured_model: str | None = None
+    router_alias: bool = False
+    family: str | None = None
+
+
 class DelegateResult(BaseModel):
     name: str
     status: DelegateStatus
@@ -91,6 +105,8 @@ class DelegateResult(BaseModel):
     attempts: int = Field(default=1, ge=1)
     # Earlier failures of this stage's primary (and earlier fallbacks), oldest first.
     prior_attempts: list[PriorAttempt] = Field(default_factory=list)
+    # The provider as configured when this answer was produced (None on older results).
+    provenance: ProviderProvenance | None = None
 
 
 class QuorumReport(BaseModel):

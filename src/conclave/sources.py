@@ -21,7 +21,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from .models import DelegateResult, DelegateStatus, SourceGroup
+from .models import DelegateResult, DelegateStatus, ProviderProvenance, SourceGroup
 from .positions import strip_position_lines
 
 SAME_CONFIG = "same_config"
@@ -68,6 +68,41 @@ class ProviderIdentity:
         return urlsplit(normalize_base_url(self.base_url)).netloc
 
 
+def safe_endpoint(base_url: str) -> str:
+    """Scheme, host and path of an endpoint: credentials and query strings are dropped."""
+    parts = urlsplit(base_url.strip())
+    host = parts.netloc.rpartition("@")[2].lower()
+    return f"{parts.scheme.lower()}://{host}{parts.path.rstrip('/')}"
+
+
+def provenance_of(identity: ProviderIdentity | None) -> ProviderProvenance | None:
+    """The secret-free record of a provider's identity, to store beside its answers."""
+    if identity is None:
+        return None
+    return ProviderProvenance(
+        endpoint=safe_endpoint(identity.base_url),
+        configured_model=identity.model,
+        router_alias=identity.router_alias,
+        family=identity.family,
+    )
+
+
+def identity_of(
+    result: DelegateResult, identities: Mapping[str, ProviderIdentity]
+) -> ProviderIdentity | None:
+    """What this answer's provider was *when it answered*; the current configuration is only a
+    fallback for answers saved before provenance was recorded."""
+    prov = result.provenance
+    if prov is not None and prov.endpoint is not None and prov.configured_model is not None:
+        return ProviderIdentity(
+            base_url=prov.endpoint,
+            model=prov.configured_model,
+            router_alias=prov.router_alias,
+            family=prov.family,
+        )
+    return identities.get(result.name)
+
+
 def normalize_base_url(base_url: str) -> str:
     """Lowercase scheme and host, drop trailing slashes. The path keeps its case."""
     parts = urlsplit(base_url.strip())
@@ -76,7 +111,7 @@ def normalize_base_url(base_url: str) -> str:
 
 def normalize_reported_model(model: str | None) -> str | None:
     """Lowercase, drop a leading ``vendor/`` segment and a trailing date suffix."""
-    if not model or not model.strip():
+    if not isinstance(model, str) or not model.strip():
         return None
     value = model.strip().lower()
     if "/" in value:
@@ -123,8 +158,7 @@ def group_sources(
 
     keyed: list[tuple[tuple, str] | None] = []
     for result in succeeded:
-        identity = identities.get(result.name)
-        keyed.append(_keys(result, identity))
+        keyed.append(_keys(result, identity_of(result, identities)))
 
     for i in range(len(succeeded)):
         for j in range(i + 1, len(succeeded)):
@@ -204,14 +238,16 @@ def judge_overlap(
     """Names of the successful delegates that are the same source as this judge."""
     marker = "\x00judge"
     answered = [r for r in delegates if r.status == DelegateStatus.SUCCEEDED]
-    identity = identities.get(judge.name)
+    identity = identity_of(judge, identities)
     # A judge that never answered judged nothing, so it cannot have judged its own source.
     if judge.status != DelegateStatus.SUCCEEDED or identity is None or not answered:
         return []
     stand_in = judge.model_copy(update={"name": marker, "status": DelegateStatus.SUCCEEDED})
     # Compare identity only: the judge's critique is never a "copy" of an answer.
     groups = group_sources(
-        [*answered, stand_in], {**identities, marker: identity}, compare_text=False
+        [*answered, stand_in],
+        {**identities, marker: identity},
+        compare_text=False,
     )
     for group in groups:
         if marker in group.delegates:
