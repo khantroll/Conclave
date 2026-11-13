@@ -52,6 +52,21 @@ Lower numeric `priority` values are preferred when two providers match the reque
 
 A provider entry may point directly to an OpenAI-compatible vendor API or to a gateway such as LiteLLM Proxy or OpenRouter. Conclave's orchestration behavior remains the same either way.
 
+## Independent sources and `router_alias`
+
+Agreement only means something when the answers come from different underlying models, so Conclave counts independent sources, not raw answers. Quorum (`minimum_successes`) is measured against that count. Two delegates are one source when either of these holds:
+
+- Their configured identity is equal: the same `base_url` (scheme and host are case-insensitive, trailing slashes ignored) and the same `model`.
+- The model each one *reported* in its response is equal, after lowercasing, dropping a leading `vendor/` segment, and dropping a trailing date suffix such as `-2026-08-06` or `-20260806`. So `openai/gpt-x` and `gpt-x-2026-08-06` are the same model.
+
+An empty or whitespace-only answer is a failure (`error_kind: "empty_response"`) and never counts.
+
+A gateway name that picks a model per call, such as `openrouter/free`, should be marked `"router_alias": true`. Such a provider is identified only by the model it reports. If it reports nothing, or only repeats its own alias name, it is an unresolved alias, and unresolved aliases on one host count as one source.
+
+A workspace may hold two delegates of one configured model (sampling a model twice can be deliberate). It saves with a warning, and the two answers count as one source. Each run records the grouping in `panel.sources` and the count in `panel.independent_source_count`, and the Critic and Arbiter prompts say which responses share a source. The direct endpoints `POST /api/deliberate` and `POST /api/panel` apply the same validation as workspaces: duplicate or unknown provider names are rejected with HTTP 422.
+
+Limits: this is based on configuration and the reported model name. It does not detect two different models trained on the same data, or near-identical answer text.
+
 ## Connectivity test
 
 The web console exposes an explicit **Test** button for each configured provider. It sends a tiny request to that provider. This can incur a small API charge on paid endpoints.

@@ -4,7 +4,7 @@ import hashlib
 import re
 from collections.abc import Iterable
 
-from .models import DelegateResult, DelegateStatus
+from .models import DelegateResult, DelegateStatus, SourceGroup
 
 
 def build_delegate_prompt(
@@ -121,6 +121,32 @@ def _successful_response_blocks(
     return blocks
 
 
+def source_note(
+    delegate_results: Iterable[DelegateResult],
+    source_groups: Iterable[SourceGroup] | None,
+) -> str | None:
+    """Tell a judge which responses are one source, so agreement is not over-counted."""
+    if not source_groups:
+        return None
+    label_of = {
+        result.name: _label(index)
+        for index, result in enumerate(
+            r for r in delegate_results if r.status == DelegateStatus.SUCCEEDED
+        )
+    }
+    lines = []
+    for group in source_groups:
+        labels = [label_of[name] for name in group.delegates if name in label_of]
+        if len(labels) < 2:
+            continue
+        joined = ", ".join(labels[:-1]) + f" and {labels[-1]}"
+        lines.append(
+            f"Responses {joined} come from the same underlying source. Count them as one "
+            "source: their agreement is not independent corroboration."
+        )
+    return "\n".join(lines) if lines else None
+
+
 def build_critic_prompt(
     *,
     question: str,
@@ -128,6 +154,7 @@ def build_critic_prompt(
     workspace_context: str | None = None,
     seed: str | None = None,
     response_char_limit: int = DEFAULT_RESPONSE_CHAR_LIMIT,
+    source_groups: list[SourceGroup] | None = None,
 ) -> str:
     sections = [
         "You are the Critic for a multi-model deliberation.",
@@ -139,6 +166,9 @@ def build_critic_prompt(
     if workspace_context:
         sections.append(f"{WORKSPACE_CONTEXT_NOTICE}:\n{workspace_context.strip()}")
     sections.append(f"Original question:\n{question.strip()}")
+    note = source_note(delegate_results, source_groups)
+    if note:
+        sections.append(note)
     sections.append(
         "Delegate responses:\n\n"
         + "\n\n".join(
@@ -162,6 +192,7 @@ def build_arbiter_prompt(
     critic_result: DelegateResult | None = None,
     seed: str | None = None,
     response_char_limit: int = DEFAULT_RESPONSE_CHAR_LIMIT,
+    source_groups: list[SourceGroup] | None = None,
 ) -> str:
     sections = [
         "You are the Arbiter for a multi-model deliberation.",
@@ -172,6 +203,9 @@ def build_arbiter_prompt(
     if workspace_context:
         sections.append(f"{WORKSPACE_CONTEXT_NOTICE}:\n{workspace_context.strip()}")
     sections.append(f"Original question:\n{question.strip()}")
+    note = source_note(delegate_results, source_groups)
+    if note:
+        sections.append(note)
     sections.append(
         "Delegate responses:\n\n"
         + "\n\n".join(

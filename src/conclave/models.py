@@ -27,6 +27,7 @@ class DelegateResult(BaseModel):
     raw_response: str | None = None
     model: str | None = None
     error: str | None = None
+    error_kind: str | None = None
     latency_ms: int | None = None
     usage: dict[str, Any] = Field(default_factory=dict)
     estimated_cost_usd: float | None = None
@@ -39,12 +40,24 @@ class PanelRequest(BaseModel):
     minimum_successes: int = Field(default=1, ge=1)
 
 
+class SourceGroup(BaseModel):
+    """Successful delegates that count as one independent source."""
+
+    delegates: list[str]
+    # same_config, same_reported_model or unresolved_router_alias; None for a lone delegate.
+    reason: str | None = None
+
+
 class PanelResult(BaseModel):
     question: str
     delegates: list[DelegateResult]
     successful_count: int
     failed_count: int
     synthesizeable: bool
+    # Quorum is measured against independent sources, not raw successes. None on runs
+    # saved before source counting existed.
+    independent_source_count: int | None = None
+    sources: list[SourceGroup] = Field(default_factory=list)
 
 
 class DeliberationRequest(BaseModel):
@@ -91,6 +104,8 @@ class Workspace(WorkspaceCreate):
     id: str
     created_at: str
     updated_at: str
+    # Not stored: advice produced when the workspace is saved.
+    warnings: list[str] = Field(default_factory=list)
 
 
 class WorkspaceReplace(WorkspaceCreate):

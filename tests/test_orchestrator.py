@@ -419,3 +419,136 @@ async def test_on_stage_without_critic_and_on_quorum_failure():
     result = await orchestrator.deliberate(short, on_stage=on_stage)
     assert seen == [False]
     assert result.arbiter is None
+
+
+# --- honest counting (P0-6) ---
+
+
+class CountingProvider(FakeProvider):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.calls = 0
+
+    async def ask(self, prompt):
+        self.calls += 1
+        return await super().ask(prompt)
+
+
+def _identity(model, base_url="https://api.example.com/v1", alias=False):
+    from conclave.sources import ProviderIdentity
+
+    return ProviderIdentity(base_url=base_url, model=model, router_alias=alias)
+
+
+def _request(delegates, minimum=2):
+    from conclave.models import DeliberationRequest
+
+    return DeliberationRequest(
+        question="q",
+        delegates=delegates,
+        critic="critic",
+        arbiter="arbiter",
+        minimum_successes=minimum,
+    )
+
+
+async def test_empty_and_whitespace_answers_are_failures_and_never_count():
+    critic, arbiter = CountingProvider("c"), CountingProvider("z")
+    orchestrator = Orchestrator(
+        {"a": FakeProvider(""), "b": FakeProvider("  \n\t "), "critic": critic, "arbiter": arbiter}
+    )
+    result = await orchestrator.deliberate(_request(["a", "b"]))
+    assert [d.status for d in result.panel.delegates] == [DelegateStatus.FAILED] * 2
+    assert {d.error_kind for d in result.panel.delegates} == {"empty_response"}
+    assert result.panel.successful_count == 0
+    assert result.panel.synthesizeable is False
+    assert result.critic is None and result.arbiter is None
+    assert critic.calls == 0 and arbiter.calls == 0
+
+
+async def test_two_delegates_of_one_source_do_not_meet_quorum_two():
+    critic, arbiter = CountingProvider("c"), CountingProvider("z")
+    orchestrator = Orchestrator(
+        {
+            "a": FakeProvider("answer one", model="m1"),
+            "b": FakeProvider("answer two", model="m1"),
+            "critic": critic,
+            "arbiter": arbiter,
+        },
+        {"a": _identity("m1"), "b": _identity("m1")},
+    )
+    result = await orchestrator.deliberate(_request(["a", "b"]))
+    assert result.panel.successful_count == 2
+    assert result.panel.independent_source_count == 1
+    assert result.panel.synthesizeable is False
+    assert [g.delegates for g in result.panel.sources] == [["a", "b"]]
+    assert critic.calls == 0 and arbiter.calls == 0
+
+
+async def test_different_models_are_two_sources_and_judges_are_told_which_share_one():
+    orchestrator = Orchestrator(
+        {
+            "a": FakeProvider("one", model="m1"),
+            "b": FakeProvider("two", model="m2"),
+            "c": FakeProvider("three", model="m1"),
+            "critic": FakeProvider("crit"),
+            "arbiter": FakeProvider("final"),
+        },
+        {"a": _identity("m1"), "b": _identity("m2"), "c": _identity("m1")},
+    )
+    result = await orchestrator.deliberate(_request(["a", "b", "c"]))
+    assert result.panel.independent_source_count == 2
+    assert result.panel.synthesizeable is True
+    for prompt in (result.critic.prompt, result.arbiter.prompt):
+        assert "Responses A and C come from the same underlying source" in prompt
+        assert "not independent corroboration" in prompt
+
+
+async def test_reported_model_names_that_normalize_equal_are_one_source():
+    orchestrator = Orchestrator(
+        {
+            "a": FakeProvider("one", model="openai/gpt-x"),
+            "b": FakeProvider("two", model="gpt-x-2026-08-06"),
+        },
+        {
+            "a": _identity("gpt-x", "https://api.one.com/v1"),
+            "b": _identity("gpt-x-latest", "https://api.two.com/v1"),
+        },
+    )
+    panel = await orchestrator.run_panel(
+        PanelRequest(
+            question="q",
+            delegates=[DelegateRequest(name="a", prompt="p"), DelegateRequest(name="b", prompt="p")],
+            minimum_successes=2,
+        )
+    )
+    assert panel.independent_source_count == 1
+    assert panel.sources[0].reason == "same_reported_model"
+    assert panel.synthesizeable is False
+
+
+async def test_retrying_a_delegate_recounts_sources():
+    from conclave.models import DeliberationResult
+
+    orchestrator = Orchestrator(
+        {
+            "a": FakeProvider("one", model="m1"),
+            "b": FakeProvider("two", model="m2"),
+            "critic": FakeProvider("crit"),
+            "arbiter": FakeProvider("final"),
+        },
+        {"a": _identity("m1"), "b": _identity("m2")},
+    )
+    request = _request(["a", "b"])
+    first = await orchestrator.deliberate(request)
+    assert first.panel.independent_source_count == 2
+
+    # b is replaced by a provider that now serves the same model as a.
+    orchestrator._providers["b"] = FakeProvider("two again", model="m1")
+    orchestrator._identities["b"] = _identity("m1")
+    retried = await orchestrator.retry_delegate(
+        request=request, prior_result=DeliberationResult(**first.model_dump()), delegate_name="b"
+    )
+    assert retried.panel.independent_source_count == 1
+    assert retried.panel.synthesizeable is False
+    assert retried.arbiter is None

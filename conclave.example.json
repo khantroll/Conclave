@@ -32,6 +32,7 @@
       "kind": "openai_compatible",
       "base_url": "https://openrouter.ai/api/v1",
       "model": "openrouter/free",
+      "router_alias": true,
       "api_key_env": "OPENROUTER_API_KEY",
       "capabilities": ["general"],
       "priority": 80
