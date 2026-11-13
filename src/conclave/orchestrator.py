@@ -257,10 +257,14 @@ class Orchestrator:
         prior_result: DeliberationResult,
         delegate_name: str,
         call_context: CallContext | None = None,
+        on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
         with self._ledger_for(call_context):
             return await self._retry_delegate(
-                request=request, prior_result=prior_result, delegate_name=delegate_name
+                request=request,
+                prior_result=prior_result,
+                delegate_name=delegate_name,
+                on_stage=on_stage,
             )
 
     async def retry_critic(
@@ -269,9 +273,12 @@ class Orchestrator:
         request: DeliberationRequest,
         prior_result: DeliberationResult,
         call_context: CallContext | None = None,
+        on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
         with self._ledger_for(call_context):
-            return await self._retry_critic(request=request, prior_result=prior_result)
+            return await self._retry_critic(
+                request=request, prior_result=prior_result, on_stage=on_stage
+            )
 
     async def retry_arbiter(
         self,
@@ -279,9 +286,12 @@ class Orchestrator:
         request: DeliberationRequest,
         prior_result: DeliberationResult,
         call_context: CallContext | None = None,
+        on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
         with self._ledger_for(call_context):
-            return await self._retry_arbiter(request=request, prior_result=prior_result)
+            return await self._retry_arbiter(
+                request=request, prior_result=prior_result, on_stage=on_stage
+            )
 
     async def _deliberate(
         self,
@@ -410,6 +420,7 @@ class Orchestrator:
         request: DeliberationRequest,
         prior_result: DeliberationResult,
         delegate_name: str,
+        on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
         if delegate_name not in request.delegates:
             raise ValueError(f"Delegate '{delegate_name}' was not part of the original request")
@@ -436,10 +447,14 @@ class Orchestrator:
             minimum_successes=request.minimum_successes,
             allow_single_source=request.allow_single_source,
         )
+        after_panel = self._result(panel, seed=request.seed)
+        # The retried delegate's answer is saved the moment it exists, before any judge runs.
+        if on_stage is not None:
+            await on_stage(after_panel)
         if not panel.synthesizeable:
-            return self._result(panel, seed=request.seed)
+            return after_panel
         return await self._downstream(
-            request=request, panel=panel, critic=None, rerun_critic=True
+            request=request, panel=panel, critic=None, rerun_critic=True, on_stage=on_stage
         )
 
     def _counted(self, request: DeliberationRequest, panel: PanelResult) -> PanelResult:
@@ -463,6 +478,7 @@ class Orchestrator:
         *,
         request: DeliberationRequest,
         prior_result: DeliberationResult,
+        on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
         if not request.critic:
             raise ValueError("The original request did not configure a Critic")
@@ -471,13 +487,16 @@ class Orchestrator:
             raise ValueError("The Delegate panel does not satisfy quorum")
         if panel.independent_source_count == 1:
             raise ValueError("A single-source run does not use the Critic")
-        return await self._downstream(request=request, panel=panel, critic=None, rerun_critic=True)
+        return await self._downstream(
+            request=request, panel=panel, critic=None, rerun_critic=True, on_stage=on_stage
+        )
 
     async def _retry_arbiter(
         self,
         *,
         request: DeliberationRequest,
         prior_result: DeliberationResult,
+        on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
         panel = self._counted(request, prior_result.panel)
         if not panel.synthesizeable:
@@ -487,7 +506,11 @@ class Orchestrator:
                 "This single-source run returned the delegate's answer, so it has no Arbiter to retry"
             )
         return await self._downstream(
-            request=request, panel=panel, critic=prior_result.critic, rerun_critic=False
+            request=request,
+            panel=panel,
+            critic=prior_result.critic,
+            rerun_critic=False,
+            on_stage=on_stage,
         )
 
     async def _run_with_fallback(
