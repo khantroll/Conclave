@@ -209,3 +209,56 @@ test("the positions table shows every row, 'not stated' and failed delegates", (
 test("the insufficient-evidence notice is fixed text", () => {
   assert.match(render.INSUFFICIENT_NOTICE, /^Insufficient evidence/);
 });
+
+for (const fixture of fixtures) {
+  test(`arbiter sections are inert and faithful: ${fixture.id}`, () => {
+    const text = fixture.text;
+    const make = (v) => ({
+      format_ok: true,
+      sections: { common_ground: v, disagreements: v, uncertainty: v, synthesis: v },
+      points: {
+        common_ground: [{ text: v, citations: [] }],
+        disagreements: [],
+        uncertainty: [{ text: v, citations: ["A"] }],
+        synthesis: [{ text: v, citations: [] }],
+      },
+      unknown_citations: [],
+      uncited_points: 0,
+    });
+    const hostile = render.structureHtml(make(text));
+    const control = render.structureHtml(make("x"));
+    assertInert(hostile, control, fixture.id);
+    assert.ok(decode(hostile).includes(text), `${fixture.id}: text was altered`);
+  });
+}
+
+test("the structure view is empty unless the format was ok", () => {
+  assert.equal(render.structureHtml(null), "");
+  assert.equal(render.structureHtml({ format_ok: false, problems: ["x"] }), "");
+  const html = render.structureHtml({
+    format_ok: true,
+    sections: { synthesis: "Do it." },
+    points: { common_ground: [{ text: "Shared [A]", citations: ["A"] }] },
+  });
+  for (const title of ["Common ground", "Disagreements", "Uncertainty", "Synthesis"]) {
+    assert.match(html, new RegExp(`<h3>${title}</h3>`));
+  }
+  assert.match(html, /<li>Shared \[A\]<\/li>/);
+  assert.match(html, /<p>Do it\.<\/p>/);
+});
+
+test("structure notices cover format failure, unknown citations and uncited points", () => {
+  assert.deepEqual(render.structureNotices(null), []);
+  assert.deepEqual(render.structureNotices({ format_ok: true, unknown_citations: [], uncited_points: 0 }), []);
+  assert.match(render.structureNotices({ format_ok: false, problems: ["missing heading ## Uncertainty"] })[0], /did not follow the required four-section format \(missing heading ## Uncertainty\)/);
+  const notes = render.structureNotices({ format_ok: true, unknown_citations: ["Q", "Z"], uncited_points: 2 });
+  assert.match(notes[0], /\[Q\] \[Z\]/);
+  assert.match(notes[1], /2 points/);
+  assert.match(render.structureNotices({ format_ok: true, unknown_citations: [], uncited_points: 1 })[0], /1 point in/);
+});
+
+test("the label legend maps labels to delegates in order", () => {
+  assert.equal(render.labelLegend({ B: "beta", A: "alpha" }), "[A] = alpha, [B] = beta");
+  assert.equal(render.labelLegend({}), "");
+  assert.equal(render.labelLegend(undefined), "");
+});

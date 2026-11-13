@@ -256,3 +256,22 @@ table.positions tr.failed td {
   margin: .4rem 0;
   font-weight: 600;
 }
+.arbiter-section {
+  margin: .5rem 0;
+}
+.arbiter-section h3 {
+  margin: 0 0 .2rem;
+  font-size: .95rem;
+  color: #c9d3e3;
+}
+.arbiter-section ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+.arbiter-section p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+#structureNotice {
+  margin: .4rem 0;
+}

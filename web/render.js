@@ -166,6 +166,53 @@
     return `<table class="positions"><thead><tr><th>Response</th><th>Delegate</th><th>Source</th><th>Conclusion</th><th>Confidence</th></tr></thead><tbody>${body}</tbody></table>`;
   }
 
+  const SECTION_TITLES = [
+    ["common_ground", "Common ground"],
+    ["disagreements", "Disagreements"],
+    ["uncertainty", "Uncertainty"],
+    ["synthesis", "Synthesis"],
+  ];
+
+  // The Arbiter's four sections, shown separately (every point verbatim and escaped). Empty when
+  // the answer was not in the required format: the raw answer is shown instead.
+  function structureHtml(structure) {
+    if (!structure || !structure.format_ok) return "";
+    return SECTION_TITLES.map(([key, title]) => {
+      const points = (structure.points && structure.points[key]) || [];
+      const body = points.length
+        ? `<ul>${points.map((p) => `<li>${escapeHtml(p.text)}</li>`).join("")}</ul>`
+        : `<p>${escapeHtml((structure.sections && structure.sections[key]) || "")}</p>`;
+      return `<div class="arbiter-section"><h3>${title}</h3>${body}</div>`;
+    }).join("");
+  }
+
+  // Plain-text notices about the Arbiter's structure: format failure, citations to responses that
+  // do not exist, and points that cite nothing. Empty for a single-source or failed Arbiter.
+  function structureNotices(structure) {
+    if (!structure) return [];
+    if (!structure.format_ok) {
+      const why = (structure.problems || []).join("; ");
+      return [`The Arbiter did not follow the required four-section format (${why}). Its raw answer is shown as written.`];
+    }
+    const notices = [];
+    const unknown = structure.unknown_citations || [];
+    if (unknown.length) {
+      notices.push(`The Arbiter cites responses that do not exist in this run: ${unknown.map((l) => "[" + l + "]").join(" ")}.`);
+    }
+    if (structure.uncited_points) {
+      const n = structure.uncited_points;
+      notices.push(`${n} point${n === 1 ? "" : "s"} in Common ground, Disagreements or Uncertainty cite no response.`);
+    }
+    return notices;
+  }
+
+  // "A = alpha, B = beta": which delegate each label stood for, so [A] in the Arbiter's answer
+  // can be read. Judges never saw these names.
+  function labelLegend(labelMap) {
+    const entries = Object.entries(labelMap || {}).sort(([a], [b]) => a.localeCompare(b));
+    return entries.length ? entries.map(([label, name]) => `[${label}] = ${name}`).join(", ") : "";
+  }
+
   // The history list. `formatDate` is passed in so this stays free of locale and clock state.
   function historyHtml(runs, formatDate) {
     if (!runs.length) return "<p>No runs yet.</p>";
@@ -207,6 +254,9 @@
     describeRefresh,
     delegateCardsHtml,
     judgeOverlapNotice,
+    structureHtml,
+    structureNotices,
+    labelLegend,
     positionsHtml,
     INSUFFICIENT_NOTICE,
     sourceSummary,

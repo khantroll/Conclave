@@ -21,6 +21,7 @@ from .prompts import (
     label_map,
 )
 from .positions import build_positions, insufficient_evidence
+from .synthesis import parse_sections
 from .quorum import describe_single_source, evaluate_quorum
 from .providers.base import Provider, ProviderError
 from .sources import ProviderIdentity, group_sources, judge_overlap
@@ -123,6 +124,13 @@ class Orchestrator:
         labels = label_map(panel.delegates, seed) if panel.synthesizeable else {}
         name_label = {name: label for label, name in labels.items()}
         positions = build_positions(panel.delegates, panel.sources, name_label)
+        # Only a multi-source Arbiter answer is read as four sections: a single-source
+        # assessment is written under a different instruction.
+        structure = (
+            parse_sections(arbiter.raw_response, labels)
+            if arbiter is not None and arbiter.status == DelegateStatus.SUCCEEDED and not single
+            else None
+        )
         overlapping = {
             name_label[name]
             for judge in (critic, arbiter)
@@ -143,6 +151,7 @@ class Orchestrator:
             label_map=labels,
             judge_overlaps=sorted(overlapping),
             positions=positions,
+            arbiter_structure=structure,
             insufficient_evidence=insufficient_evidence(
                 positions,
                 panel.sources,

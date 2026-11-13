@@ -14,6 +14,9 @@ const {
   describeRefresh,
   delegateCardsHtml,
   judgeOverlapNotice,
+  structureHtml,
+  structureNotices,
+  labelLegend,
   positionsHtml,
   INSUFFICIENT_NOTICE,
   sourceSummary,
@@ -483,6 +486,17 @@ function renderResult(result, runId = null) {
   const overlap = judgeOverlapNotice(result);
   $("judgeOverlapNotice").classList.toggle("hidden", !overlap);
   $("judgeOverlapNotice").textContent = overlap;
+  // A well-formed Arbiter answer is shown as its four sections, with the raw answer kept below;
+  // anything else is shown raw, with a notice.
+  const structured = structureHtml(result.arbiter_structure);
+  $("arbiterStructured").classList.toggle("hidden", !structured);
+  $("arbiterStructured").innerHTML = structured;
+  const notices = structureNotices(result.arbiter_structure);
+  $("structureNotice").classList.toggle("hidden", !notices.length);
+  $("structureNotice").textContent = notices.join(" ");
+  $("labelLegend").textContent = structured ? labelLegend(result.label_map) : "";
+  $("arbiterRawDetails").open = !structured;
+  $("arbiterRawLabel").textContent = structured ? "Show raw Arbiter answer" : "Raw Arbiter answer";
   $("arbiterAnswer").textContent = arbiter
     ? (arbiter.raw_response || arbiter.error || arbiter.status)
     : (lone ? lone.text : "");

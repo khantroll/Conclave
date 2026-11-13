@@ -17,6 +17,7 @@ import re
 from collections.abc import Iterable, Sequence
 
 from .models import DelegateResult, DelegateStatus, PositionRow, SourceGroup
+from .synthesis import parse_sections, synthesis_is_insufficient
 
 CONFIDENCE_LEVELS = ("high", "medium", "low", "insufficient evidence")
 INSUFFICIENT = "insufficient evidence"
@@ -106,15 +107,12 @@ def build_positions(
 
 
 def arbiter_says_insufficient(text: str | None) -> bool:
-    """True when the Arbiter's Synthesis section begins "Insufficient evidence"."""
-    lines = _split_lines(text)
-    for index, line in enumerate(lines):
-        if line.strip() == "## Synthesis":
-            for following in lines[index + 1 :]:
-                if following.strip():
-                    return following.strip().lower().startswith("insufficient evidence")
-            return False
-    return False
+    """True when the Arbiter's Synthesis section begins "Insufficient evidence".
+
+    Read through the strict four-section parser: a malformed answer (shown raw, with a notice)
+    does not set the flag.
+    """
+    return synthesis_is_insufficient(parse_sections(text))
 
 
 def insufficient_evidence(
