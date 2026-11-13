@@ -13,9 +13,9 @@ As a user, I can submit one question to a selected panel of models, see each mod
    - Optionally attach workspace context.
 
 2. **Analyze the request**
-   - Extract intent, constraints, entities, and desired output.
-   - Assign a simple complexity level.
-   - Recommend whether one model or a panel is appropriate.
+   - Assign a simple complexity level with deterministic, rule-based signals (no extra model call).
+   - Recommend a panel size and the capabilities that would help.
+   - Intent, constraint and entity extraction is not part of this release.
 
 3. **Prepare delegates**
    - Select configured models.
@@ -36,7 +36,7 @@ As a user, I can submit one question to a selected panel of models, see each mod
    - Store and display each raw response.
    - Never replace the source responses with the synthesis.
 
-7. **Critique**
+7. **Critique** (optional; there is no default, a workspace states its choice)
    - Identify conflicting claims.
    - Flag unsupported assumptions and likely factual claims requiring verification.
    - Surface useful minority opinions.
@@ -44,14 +44,15 @@ As a user, I can submit one question to a selected panel of models, see each mod
 
 8. **Synthesize**
    - Use a configurable Arbiter model.
-   - Produce a concise final answer.
+   - Produce a concise final answer in four checked sections: common ground, disagreements, uncertainty, synthesis.
    - Preserve unresolved disagreements and uncertainties.
+   - Show each delegate's own position beside the synthesis, whatever the Arbiter wrote.
 
 9. **Track execution**
    - Latency by model.
    - Token usage where providers expose it.
-   - Estimated/actual cost where practical.
-   - Provider/model errors.
+   - Every provider request in a call ledger, with estimated cost (tokens times the configured price) kept apart from provider-reported cost; unknown is never shown as zero, and billed cost is never claimed.
+   - Provider/model errors, classified.
 
 10. **Workspace basics**
     - Name and description.
@@ -89,9 +90,9 @@ The MVP is successful if it can demonstrate all of the following:
 - **Provider strategy:** Conclave owns the provider abstraction; LiteLLM/OpenRouter may be used behind the generic OpenAI-compatible adapter.
 - **Request analysis:** deterministic/rule-based first, so routing does not require an extra model call.
 - **Prompt visibility:** exact prompts and untouched raw responses are persisted.
-- **Critic/Arbiter:** configured per workspace.
+- **Critic/Arbiter:** configured per workspace. There is no Critic default; the workspace must choose a Critic provider or none.
 - **Secrets:** API keys are referenced through environment variables and are not stored in workspace data.
-- **Persistence:** SQLite stores workspaces, request snapshots, and run results.
+- **Persistence:** SQLite stores workspaces, request snapshots, run results and the call ledger, with a schema version and a verified backup before any upgrade.
 - **Retries:** Delegate, Critic, and Arbiter retries are isolated so successful upstream work does not need to be repeated.
 
 Semantic claim/source normalization is intentionally deferred until real-provider testing demonstrates a clear need.
