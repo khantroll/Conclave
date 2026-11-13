@@ -304,3 +304,10 @@ test("the chain total is shown only when it holds more calls than the run", () =
   assert.deepEqual(render.costLines(run, null), ["This run: Estimated $0.0100."]);
   assert.deepEqual(render.costLines(null, null), []);
 });
+
+test("a retry is marked in the history list", () => {
+  const make = (extra) => [{ id: "r", question: "q", created_at: "t", workspace_id: "w", result: { panel: { delegates: [], successful_count: 0 } }, ...extra }];
+  assert.match(render.historyHtml(make({ parent_run_id: "p" }), String), / · retry/);
+  assert.doesNotMatch(render.historyHtml(make({}), String), / · retry/);
+  assert.doesNotMatch(render.historyHtml(make({ parent_run_id: null }), String), / · retry/);
+});

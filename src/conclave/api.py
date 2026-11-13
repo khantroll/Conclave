@@ -15,6 +15,7 @@ from .config import ConclaveConfig, load_config
 from .ledger import CallContext
 from .models import (
     CallRow,
+    DelegateStatus,
     AnalyzeRequest,
     DeliberationRequest,
     DeliberationResult,
@@ -164,6 +165,8 @@ def create_app(
     )
 
     store.mark_interrupted_runs()
+    # Chain roots with a retry in progress (one retry at a time per chain).
+    retrying: set[str] = set()
     # Every provider request, from any endpoint, is recorded in the call ledger as it happens.
     orchestrator.ledger_sink = store.record_call
 
@@ -376,14 +379,24 @@ def create_app(
         "/api/workspaces/{workspace_id}/runs",
         response_model=list[DeliberationRun],
     )
-    async def list_workspace_runs(workspace_id: str) -> list[DeliberationRun]:
+    async def list_workspace_runs(
+        workspace_id: str, all_attempts: bool = False
+    ) -> list[DeliberationRun]:
         if store.get(workspace_id) is None:
             raise HTTPException(status_code=404, detail="Workspace not found")
-        return store.list_runs(workspace_id)
+        return store.list_runs(workspace_id, include_all_attempts=all_attempts)
 
     @app.get("/api/runs", response_model=list[DeliberationRun])
-    async def list_all_runs() -> list[DeliberationRun]:
-        return store.list_runs()
+    async def list_all_runs(all_attempts: bool = False) -> list[DeliberationRun]:
+        """The newest run of each retry chain; ``?all_attempts=true`` lists every attempt."""
+        return store.list_runs(include_all_attempts=all_attempts)
+
+    @app.get("/api/runs/{run_id}/chain", response_model=list[DeliberationRun])
+    async def get_run_chain(run_id: str) -> list[DeliberationRun]:
+        """Every attempt in the retry chain a run belongs to, from the root to the newest."""
+        if store.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="Deliberation run not found")
+        return store.chain_runs(store.chain_root_of(run_id))
 
     @app.get("/api/runs/{run_id}", response_model=DeliberationRun)
     async def get_run(run_id: str) -> DeliberationRun:
@@ -496,29 +509,54 @@ def create_app(
             )
         request = _seeded(run.request)
         new_id, chain_root = str(uuid4()), store.chain_root_of(run_id)
-        store.create_run(
-            question=run.question,
-            request=request,
-            workspace_id=run.workspace_id,
-            run_id=new_id,
-        )
-        context = CallContext(run_id=new_id, chain_root_id=chain_root)
+        # One retry at a time per chain: two at once would both spend and write conflicting
+        # histories. (A single event loop makes this check-and-add atomic.)
+        if chain_root in retrying:
+            raise HTTPException(
+                status_code=409, detail="A retry is already running for this run's chain"
+            )
+        retrying.add(chain_root)
         try:
-            result = await call(request, run.result, context)
-        except ValueError as exc:
-            # Refused before any provider was called: there is nothing to keep.
-            store.discard_run(new_id)
-            raise HTTPException(status_code=error_status, detail=str(exc)) from exc
-        except BaseException:
-            store.mark_interrupted(new_id)
-            raise
-        store.update_run(new_id, result, "complete")
-        saved = store.get_run(new_id)
-        assert saved is not None
-        return saved
+            store.create_run(
+                question=run.question,
+                request=request,
+                workspace_id=run.workspace_id,
+                run_id=new_id,
+                parent_run_id=run_id,
+                chain_root_id=chain_root,
+            )
+            context = CallContext(run_id=new_id, chain_root_id=chain_root)
+            try:
+                result = await call(request, run.result, context)
+            except ValueError as exc:
+                # Refused before any provider was called: there is nothing to keep.
+                store.discard_run(new_id)
+                raise HTTPException(status_code=error_status, detail=str(exc)) from exc
+            except BaseException:
+                store.mark_interrupted(new_id)
+                raise
+            store.update_run(new_id, result, "complete")
+            saved = store.get_run(new_id)
+            assert saved is not None
+            return saved
+        finally:
+            retrying.discard(chain_root)
 
     @app.post("/api/runs/{run_id}/delegates/{delegate_name}/retry", response_model=DeliberationRun)
-    async def retry_delegate(run_id: str, delegate_name: str) -> DeliberationRun:
+    async def retry_delegate(
+        run_id: str, delegate_name: str, force: bool = False
+    ) -> DeliberationRun:
+        run = store.get_run(run_id)
+        if run is not None and not force:
+            current = next((d for d in run.result.panel.delegates if d.name == delegate_name), None)
+            if current is not None and current.status == DelegateStatus.SUCCEEDED:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Delegate '{delegate_name}' already succeeded in this run; pass "
+                        "?force=true to run it again"
+                    ),
+                )
         return await _retry(
             run_id,
             404,

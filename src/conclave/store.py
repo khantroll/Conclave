@@ -123,10 +123,23 @@ class WorkspaceStore:
                 column="updated_at",
                 definition="TEXT",
             )
+            # Retry lineage. Older rows keep NULL here and read as their own chain root.
+            self._ensure_column(
+                connection, table="deliberation_runs", column="parent_run_id", definition="TEXT"
+            )
+            self._ensure_column(
+                connection, table="deliberation_runs", column="chain_root_id", definition="TEXT"
+            )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_deliberation_runs_workspace_created
                 ON deliberation_runs(workspace_id, created_at DESC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_deliberation_runs_chain
+                ON deliberation_runs(chain_root_id)
                 """
             )
             # The call ledger: one row per provider request. A new table, so an older database
@@ -294,6 +307,8 @@ class WorkspaceStore:
         request: DeliberationRequest | None = None,
         workspace_id: str | None = None,
         run_id: str | None = None,
+        parent_run_id: str | None = None,
+        chain_root_id: str | None = None,
     ) -> DeliberationRun:
         """Insert a finished run in one step. ``run_id`` lets a caller fix the id beforehand,
         so the calls made to produce the run can already be in the ledger under it."""
@@ -304,6 +319,8 @@ class WorkspaceStore:
             workspace_id=workspace_id,
             status="complete",
             run_id=run_id,
+            parent_run_id=parent_run_id,
+            chain_root_id=chain_root_id,
         )
         run.chain_cost = self.chain_cost(run.id)
         self._write_run_log(run)
@@ -316,6 +333,8 @@ class WorkspaceStore:
         request: DeliberationRequest | None = None,
         workspace_id: str | None = None,
         run_id: str | None = None,
+        parent_run_id: str | None = None,
+        chain_root_id: str | None = None,
     ) -> DeliberationRun:
         """Insert a ``running`` row before any provider is called."""
         empty = DeliberationResult(
@@ -334,6 +353,8 @@ class WorkspaceStore:
             workspace_id=workspace_id,
             status="running",
             run_id=run_id,
+            parent_run_id=parent_run_id,
+            chain_root_id=chain_root_id,
         )
 
     def _insert_run(
@@ -345,10 +366,16 @@ class WorkspaceStore:
         workspace_id: str | None,
         status: str,
         run_id: str | None = None,
+        parent_run_id: str | None = None,
+        chain_root_id: str | None = None,
     ) -> DeliberationRun:
         now = _now()
+        new_id = run_id or str(uuid4())
         run = DeliberationRun(
-            id=run_id or str(uuid4()),
+            id=new_id,
+            parent_run_id=parent_run_id,
+            # A run that is not a retry starts its own chain.
+            chain_root_id=chain_root_id or new_id,
             workspace_id=workspace_id,
             question=question,
             request=request,
@@ -362,8 +389,8 @@ class WorkspaceStore:
                 """
                 INSERT INTO deliberation_runs (
                     id, workspace_id, question, request_json, result_json,
-                    created_at, status, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, status, updated_at, parent_run_id, chain_root_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.id,
@@ -374,6 +401,8 @@ class WorkspaceStore:
                     run.created_at,
                     run.status,
                     run.updated_at,
+                    run.parent_run_id,
+                    run.chain_root_id,
                 ),
             )
         return run
@@ -460,21 +489,42 @@ class WorkspaceStore:
         except OSError:
             logging.exception("Could not write automatic run log for %s", run.id)
 
-    def list_runs(self, workspace_id: str | None = None) -> list[DeliberationRun]:
-        with self._connect() as connection:
-            if workspace_id is None:
-                rows = connection.execute(
-                    "SELECT * FROM deliberation_runs ORDER BY created_at DESC"
-                ).fetchall()
-            else:
-                rows = connection.execute(
-                    """
-                    SELECT * FROM deliberation_runs
-                    WHERE workspace_id = ?
-                    ORDER BY created_at DESC
-                    """,
-                    (workspace_id,),
-                ).fetchall()
+    def list_runs(
+        self, workspace_id: str | None = None, *, include_all_attempts: bool = False
+    ) -> list[DeliberationRun]:
+        """Runs, newest first. By default only the newest run of each retry chain is listed;
+        every attempt is still stored and reachable from its chain root."""
+        params: list = []
+        scope = ""
+        if workspace_id is not None:
+            scope = "WHERE workspace_id = ?"
+            params.append(workspace_id)
+        if include_all_attempts:
+            sql = f"SELECT * FROM deliberation_runs {scope} ORDER BY created_at DESC, rowid DESC"
+        else:
+            # Number each chain's attempts newest-first and keep the first (rowid breaks ties).
+            sql = f"""
+                SELECT * FROM (
+                    SELECT r.*, r.rowid AS run_rowid, ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(r.chain_root_id, r.id)
+                        ORDER BY r.created_at DESC, r.rowid DESC
+                    ) AS attempt_rank
+                    FROM deliberation_runs r {scope}
+                ) WHERE attempt_rank = 1
+                ORDER BY created_at DESC, run_rowid DESC
+            """
+        with closing(self._connect()) as connection:
+            rows = connection.execute(sql, params).fetchall()
+        return [self._run_from_row(row) for row in rows]
+
+    def chain_runs(self, chain_root_id: str) -> list[DeliberationRun]:
+        """Every attempt in a retry chain, oldest first."""
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT * FROM deliberation_runs "
+                "WHERE COALESCE(chain_root_id, id) = ? ORDER BY created_at, rowid",
+                (chain_root_id,),
+            ).fetchall()
         return [self._run_from_row(row) for row in rows]
 
     def get_run(self, run_id: str) -> DeliberationRun | None:
@@ -522,15 +572,13 @@ class WorkspaceStore:
         ]
 
     def chain_root_of(self, run_id: str) -> str:
-        """The root of the retry chain a run belongs to (the run itself when it has no calls
-        recorded under an earlier root)."""
+        """The root of the retry chain a run belongs to (the run itself when it is not a retry,
+        or is unknown)."""
         with closing(self._connect()) as connection:
             row = connection.execute(
-                "SELECT chain_root_id FROM provider_calls "
-                "WHERE run_id = ? AND chain_root_id IS NOT NULL LIMIT 1",
-                (run_id,),
+                "SELECT chain_root_id FROM deliberation_runs WHERE id = ?", (run_id,)
             ).fetchone()
-        return row["chain_root_id"] if row else run_id
+        return row["chain_root_id"] if row and row["chain_root_id"] else run_id
 
     def chain_cost(self, run_id: str) -> CostSummary | None:
         """Totals over every call in a run's retry chain, or None when none were recorded."""
@@ -572,6 +620,12 @@ class WorkspaceStore:
             created_at=row["created_at"],
             status=row["status"] if "status" in row.keys() else "complete",
             updated_at=row["updated_at"] if "updated_at" in row.keys() else None,
+            parent_run_id=row["parent_run_id"] if "parent_run_id" in row.keys() else None,
+            chain_root_id=(
+                row["chain_root_id"]
+                if "chain_root_id" in row.keys() and row["chain_root_id"]
+                else row["id"]
+            ),
         )
 
 

@@ -154,6 +154,16 @@ Once that fixed three-model path is proven, enable automatic delegate selection 
 Model availability can change. If a provider Test button reports a model-not-found error, update only that provider's `model` value in `conclave.json`, restart Conclave, and test again.
 
 
+## Retry chains
+
+A retry (of a delegate, the Critic or the Arbiter) is saved as a new run, and the runs are linked. Each run has `parent_run_id` (the run it retried; none for a run that is not a retry) and `chain_root_id` (the first run of the chain; a run that is not a retry is its own root). A retry reuses the chain's seed, so the response labels and their order, and the markers in the prompts, stay the same across the chain. Runs saved before this change read as their own root. Every run is reachable from its root: `GET /api/runs/{id}/chain` lists the whole chain, oldest first.
+
+Every attempt is stored, so history stays truthful, but `GET /api/runs` and `GET /api/workspaces/{id}/runs` list only the newest run of each chain by default (the console marks it "retry"); add `?all_attempts=true` for every attempt.
+
+A new retry's row is created, as `running`, before any provider is called, and is marked `interrupted` if the retry is cancelled or fails, so what it spent stays attached to it. A retry that is refused before it starts (an unknown delegate, a run with no Critic) leaves nothing behind.
+
+Only one retry runs at a time per chain: a second retry in a chain that already has one in progress gets HTTP 409 ("A retry is already running for this run's chain") instead of both spending and writing conflicting histories. Chains do not block each other. Retrying a delegate that already succeeded in the run is also refused with 409 unless you pass `?force=true`, so a successful answer is not paid for again by accident. The check looks at the run you retry from, because the retry builds on that run's panel (retrying from an older run in which the delegate had failed needs no force).
+
 ## The call ledger and cost
 
 Cost used to be recomputed from the stage results that survived a run, so retries, fallbacks, HTTP-level retries, failed calls, timeouts and connectivity tests disappeared from it, and one number mixed estimate with fact. Conclave now keeps a call ledger: the `provider_calls` table holds **one row per HTTP request** a provider adapter makes, plus one row for each call a timeout or cancellation abandoned. Rows are written as calls end, so a cancelled or crashed run keeps what it already spent. The table is new; an older database simply gains it and nothing existing is rewritten.

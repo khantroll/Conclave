@@ -302,6 +302,10 @@ class DeliberationRun(BaseModel):
     created_at: str
     status: Literal["running", "complete", "interrupted"] = "complete"
     updated_at: str | None = None
+    # Retry lineage. A run that is not a retry has no parent and is its own chain root; every
+    # retry points at the run it retried and at the root of its chain.
+    parent_run_id: str | None = None
+    chain_root_id: str | None = None
     # Cost of every call in this run's retry chain, from the call ledger (None for old runs).
     chain_cost: CostSummary | None = None
 
