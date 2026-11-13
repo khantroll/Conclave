@@ -20,6 +20,7 @@ from harness import (
     DELEGATES,
     HONEST,
     FIXTURES,
+    FIXTURES_BY_ID,
     SCENARIOS,
     SYNTHESIS,
     TOKEN,
@@ -136,17 +137,35 @@ def test_no_delegate_prompt_in_any_scenario_contains_any_models_output(scenario,
 # ------------------------------------------------------------ parser isolation
 
 
+@pytest.mark.parametrize("fixture", FIXTURE_IDS)
+def test_a_hostile_answer_changes_only_its_own_position_row(fixture):
+    """Positions are parsed from a delegate's own answer and from nothing else. Whatever the
+    attacker writes (including lines that imitate another delegate's) the only thing that may
+    differ from the benign control is the attacker's own row."""
+    from conclave.positions import parse_position
+
+    hostile = run_scenario("delegate_to_arbiter", fixture)
+    control = run_scenario("delegate_to_arbiter", None)
+    assert trace(hostile) == trace(control)
+    rows = {r.delegate: r for r in hostile.result.positions}
+    control_rows = {r.delegate: r for r in control.result.positions}
+    assert set(rows) == set(control_rows) == set(DELEGATES)
+    assert rows["honest"] == control_rows["honest"]
+    conclusion, confidence, said = parse_position(FIXTURES_BY_ID[fixture]["text"])
+    assert (rows["attacker"].conclusion, rows["attacker"].confidence) == (conclusion, confidence)
+    assert rows["attacker"].confidence_text == said
+    # Counts and the insufficient-evidence flag are not for the attacker to move.
+    assert hostile.result.panel.independent_source_count == control.result.panel.independent_source_count
+    assert hostile.result.insufficient_evidence == control.result.insufficient_evidence
+
+
 def test_only_arbiter_output_is_parsed_for_sections():
-    positions = pytest.importorskip(
-        "conclave.positions",
-        reason=(
-            "needs P1-5/P1-6 (positions and structured Arbiter output), which are not built yet. "
-            "Nothing in Conclave parses model output today, which the control-flow tests above "
-            "already show: no fixture changes any decision."
-        ),
+    synthesis = pytest.importorskip(
+        "conclave.synthesis",
+        reason="needs P1-6 (structured Arbiter output), which is not built yet.",
     )
     for item in FIXTURES:
-        parsed = positions.parse_sections(item["text"])
+        parsed = synthesis.parse_sections(item["text"])
         if item["class"] in {4, 5}:
             assert parsed.format_ok is False, item["id"]
 

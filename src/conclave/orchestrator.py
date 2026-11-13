@@ -20,6 +20,7 @@ from .prompts import (
     build_delegate_prompt,
     label_map,
 )
+from .positions import build_positions, insufficient_evidence
 from .quorum import describe_single_source, evaluate_quorum
 from .providers.base import Provider, ProviderError
 from .sources import ProviderIdentity, group_sources, judge_overlap
@@ -121,6 +122,7 @@ class Orchestrator:
         single = panel.synthesizeable and panel.independent_source_count == 1
         labels = label_map(panel.delegates, seed) if panel.synthesizeable else {}
         name_label = {name: label for label, name in labels.items()}
+        positions = build_positions(panel.delegates, panel.sources, name_label)
         overlapping = {
             name_label[name]
             for judge in (critic, arbiter)
@@ -140,6 +142,14 @@ class Orchestrator:
             single_source_answer=answer,
             label_map=labels,
             judge_overlaps=sorted(overlapping),
+            positions=positions,
+            insufficient_evidence=insufficient_evidence(
+                positions,
+                panel.sources,
+                arbiter.raw_response
+                if arbiter is not None and arbiter.status == DelegateStatus.SUCCEEDED
+                else None,
+            ),
         )
 
     async def deliberate(

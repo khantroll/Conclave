@@ -134,6 +134,38 @@
     return lines.join("\n");
   }
 
+  const INSUFFICIENT_NOTICE =
+    "Insufficient evidence: every independent source, or the Arbiter, says the responses do not support an answer.";
+
+  // One row per delegate, verbatim and escaped, so dissent is visible whatever the Arbiter wrote.
+  // Every field except the label, the source number and the fixed words is model text.
+  function positionsHtml(rows) {
+    if (!rows || !rows.length) return "";
+    const body = rows
+      .map((r) => {
+        const answered = r.status === "succeeded";
+        const conclusion = !answered
+          ? `did not answer (${r.status})`
+          : r.conclusion || "not stated";
+        // Shown as the delegate wrote it; the recognized level is only for logic.
+        let confidence = "not stated";
+        if (!answered) confidence = "-";
+        else if (r.confidence_text) {
+          confidence = r.confidence ? r.confidence_text : `${r.confidence_text} (not a recognized level)`;
+        } else if (r.confidence) confidence = r.confidence;
+        const cls = answered ? "" : ' class="failed"';
+        return `<tr${cls}>
+          <td>${r.label ? escapeHtml(r.label) : "-"}</td>
+          <td>${escapeHtml(r.delegate)}</td>
+          <td>${r.source ? "S" + escapeHtml(r.source) : "-"}</td>
+          <td>${escapeHtml(conclusion)}</td>
+          <td>${escapeHtml(confidence)}</td>
+        </tr>`;
+      })
+      .join("");
+    return `<table class="positions"><thead><tr><th>Response</th><th>Delegate</th><th>Source</th><th>Conclusion</th><th>Confidence</th></tr></thead><tbody>${body}</tbody></table>`;
+  }
+
   // The history list. `formatDate` is passed in so this stays free of locale and clock state.
   function historyHtml(runs, formatDate) {
     if (!runs.length) return "<p>No runs yet.</p>";
@@ -175,6 +207,8 @@
     describeRefresh,
     delegateCardsHtml,
     judgeOverlapNotice,
+    positionsHtml,
+    INSUFFICIENT_NOTICE,
     sourceSummary,
     AGREEMENT_NOTE,
     historyHtml,
