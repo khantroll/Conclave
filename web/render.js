@@ -284,7 +284,7 @@
         <div class="history-item" data-run-id="${escapeHtml(run.id)}">
           <strong>${escapeHtml(title)}</strong>
           <div class="history-preview">${escapeHtml(preview)}</div>
-          <small>${escapeHtml(formatDate(run.created_at))} · ${succeeded}/${delegateCount} delegates · ${critic} · ${arbiter}${run.workspace_id ? "" : " · detached"}${cost ? " · " + escapeHtml(cost) : ""}</small>
+          <small>${escapeHtml(formatDate(run.created_at))} · ${succeeded}/${delegateCount} delegates · ${critic} · ${arbiter}${run.workspace_id ? "" : " · detached"}${run.parent_run_id ? " · retry" : ""}${cost ? " · " + escapeHtml(cost) : ""}</small>
         </div>`;
       })
       .join("");

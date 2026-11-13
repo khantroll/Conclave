@@ -594,7 +594,7 @@ def _api_scenario(tmp_path, monkeypatch, text, subdir, kind):
         seen += [first, client.post(f"/api/runs/{run_id}/{stage}/retry")]
 
     results = [(r.json() if "result" not in r.json() else r.json()["result"]) for r in seen]
-    runs = store.list_runs()
+    runs = store.list_runs(include_all_attempts=True)
     logs = list((tmp_path / subdir / "logs").glob("*.json"))
     return seen, results, runs, logs, {k: v.calls for k, v in made.items()}
 

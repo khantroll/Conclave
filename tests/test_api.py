@@ -178,8 +178,11 @@ def test_workspace_persists_defaults_run_and_history(tmp_path):
     assert saved["result"]["arbiter"]["status"] == "succeeded"
     assert saved["request"]["delegates"] == ["demo-a", "demo-b"]
 
+    # demo-a succeeded, so re-running it needs an explicit force.
+    refused = workspace_client.post(f"/api/runs/{runs[0]['id']}/delegates/demo-a/retry")
+    assert refused.status_code == 409 and "force" in refused.json()["detail"]
     retried = workspace_client.post(
-        f"/api/runs/{runs[0]['id']}/delegates/demo-a/retry"
+        f"/api/runs/{runs[0]['id']}/delegates/demo-a/retry?force=true"
     )
     assert retried.status_code == 200
     retry_run = retried.json()
@@ -190,7 +193,14 @@ def test_workspace_persists_defaults_run_and_history(tmp_path):
     history_after_retry = workspace_client.get(
         f"/api/workspaces/{workspace['id']}/runs"
     )
-    assert len(history_after_retry.json()) == 2
+    # History lists the newest attempt of each chain; every attempt is still stored.
+    assert [r["id"] for r in history_after_retry.json()] == [retry_run["id"]]
+    every = workspace_client.get(
+        f"/api/workspaces/{workspace['id']}/runs?all_attempts=true"
+    ).json()
+    assert len(every) == 2
+    assert retry_run["parent_run_id"] == runs[0]["id"]
+    assert retry_run["chain_root_id"] == runs[0]["id"]
 
 
 def test_auto_select_workspace_uses_smaller_panel_for_simple_question(tmp_path):
