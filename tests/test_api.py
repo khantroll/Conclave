@@ -489,7 +489,13 @@ async def test_cancel_during_panel_leaves_interrupted_row(tmp_path, monkeypatch)
     runs = store.list_runs()
     assert len(runs) == 1
     assert runs[0].status == "interrupted"
-    assert runs[0].result.panel.delegates == []
+    # Nothing paid for is lost: the delegate that had answered keeps its answer, and the one that
+    # was cut off is recorded as cancelled instead of silently missing.
+    by_name = {d.name: d for d in runs[0].result.panel.delegates}
+    assert set(by_name) == {"demo-a", "demo-b"}
+    assert by_name["demo-b"].status.value == "succeeded" and by_name["demo-b"].raw_response
+    assert (by_name["demo-a"].status.value, by_name["demo-a"].error_kind) == ("failed", "cancelled")
+    assert runs[0].result.critic is None and runs[0].result.arbiter is None
 
 
 def test_normal_run_is_one_complete_row(tmp_path):

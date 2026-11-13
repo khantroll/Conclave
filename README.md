@@ -136,6 +136,10 @@ Then open the Conclave web console at `http://127.0.0.1:8000/` or the FastAPI do
 
 The built-in `demo-*` providers exist only to exercise orchestration before real provider configuration is added.
 
+### The mock benchmark
+
+`tests/benchmark/` holds a fixed, free benchmark that runs with the rest of the suite (about five seconds). `fixtures.json` scripts 32 panels with fake providers (agreement, dissent, partial failure, empty answers, single sources, duplicate sources by configuration, reported model, router alias and copied text, malformed and insufficient-evidence Arbiter answers, fallbacks and very long answers) plus 5 scripted HTTP failure sequences, and `test_invariants.py` checks thirteen invariants against them: dissent reaches the Arbiter inside its own block; a failure is disclosed as "k of n"; a single source is labelled and the Critic skipped; an empty answer is not a success; duplicate sources collapse and different models stay separate; judging is blind and the order varies by seed but is stable across retries; call counts and prompt sizes match; nothing paid for is lost when a run is cancelled at the panel, Critic or Arbiter stage; ledger totals equal the sum of the rows and unpriced calls are never $0; a position is shown for every delegate whatever the Arbiter wrote; structured output parses or says it did not; prompts rebuilt from a stored run are byte-identical; and no delegate prompt contains any other model's output. Every fixture passes, with no expected failures. It measures that the pipeline keeps these properties with scripted providers. It does not measure whether a real model judges well; that is a separate, paid benchmark (roadmap P1-13).
+
 ### Running safely
 
 Conclave has **no login**. Keep the server on loopback (`127.0.0.1`, the uvicorn default) and do not publish its port. Anyone who can reach it can spend your provider credit and read your stored prompts and responses, which are kept in plain text in the SQLite database and `run_logs/`.
