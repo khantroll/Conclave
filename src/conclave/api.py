@@ -450,6 +450,7 @@ def create_app(
             workspace_context=workspace.context,
             minimum_successes=required,
             allow_single_source=workspace.allow_single_source,
+            single_source_mode=workspace.single_source_mode or "return_answer",
             selection=trace,
             timeout_seconds=request.timeout_seconds,
             critic_timeout_seconds=request.critic_timeout_seconds,
@@ -547,6 +548,15 @@ def _seeded(request: DeliberationRequest) -> DeliberationRequest:
 
 
 def _validate_workspace(request: WorkspaceCreate, provider_names: list[str]) -> None:
+    if request.single_source_mode is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "single_source_mode is required: choose 'return_answer' (the lone answer is "
+                "returned, no Arbiter) or 'arbiter_single_source' (the Arbiter assesses it). "
+                "It does not allow single-source runs; that is allow_single_source."
+            ),
+        )
     _validate_quorum(request.minimum_successes, len(request.delegates))
     _validate_participants(
         delegates=request.delegates,

@@ -70,6 +70,7 @@ def workspace_body(delegates, quorum, **extra):
         "name": "w",
         "delegates": delegates,
         "arbiter": "demo-arbiter",
+        "single_source_mode": "arbiter_single_source",
         "critic": "demo-critic",
         "minimum_successes": quorum,
         **extra,

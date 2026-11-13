@@ -121,6 +121,33 @@ def _successful_response_blocks(
     return blocks
 
 
+def _failure_kind(result: DelegateResult) -> str:
+    """How a delegate failed, in a word. Never an error body, a provider or a model name."""
+    if result.status == DelegateStatus.TIMED_OUT:
+        return "timed out"
+    if result.error_kind == "empty_response":
+        return "empty"
+    return "failed"
+
+
+def coverage_note(
+    delegate_results: Iterable[DelegateResult],
+    source_groups: Iterable[SourceGroup] | None,
+) -> str:
+    """State how many delegates answered, so a judge cannot mistake a partial panel for all."""
+    results = list(delegate_results)
+    answered = sum(result.status == DelegateStatus.SUCCEEDED for result in results)
+    groups = list(source_groups or [])
+    head = f"{answered} of {len(results)} delegates answered"
+    if groups:
+        head += f"; {len(groups)} independent source{'s' if len(groups) != 1 else ''}"
+    lines = [head + "."]
+    for slot, result in enumerate(results, start=1):
+        if result.status != DelegateStatus.SUCCEEDED:
+            lines.append(f"Slot {slot} did not answer: {_failure_kind(result)}.")
+    return "\n".join(lines)
+
+
 def source_note(
     delegate_results: Iterable[DelegateResult],
     source_groups: Iterable[SourceGroup] | None,
@@ -156,6 +183,7 @@ def build_critic_prompt(
     response_char_limit: int = DEFAULT_RESPONSE_CHAR_LIMIT,
     source_groups: list[SourceGroup] | None = None,
 ) -> str:
+    delegate_results = list(delegate_results)
     sections = [
         "You are the Critic for a multi-model deliberation.",
         "Do not synthesize a final answer. Audit the delegates for contradictions, unsupported "
@@ -166,6 +194,7 @@ def build_critic_prompt(
     if workspace_context:
         sections.append(f"{WORKSPACE_CONTEXT_NOTICE}:\n{workspace_context.strip()}")
     sections.append(f"Original question:\n{question.strip()}")
+    sections.append(coverage_note(delegate_results, source_groups))
     note = source_note(delegate_results, source_groups)
     if note:
         sections.append(note)
@@ -193,7 +222,9 @@ def build_arbiter_prompt(
     seed: str | None = None,
     response_char_limit: int = DEFAULT_RESPONSE_CHAR_LIMIT,
     source_groups: list[SourceGroup] | None = None,
+    single_source_label: str | None = None,
 ) -> str:
+    delegate_results = list(delegate_results)
     sections = [
         "You are the Arbiter for a multi-model deliberation.",
         "Prefer evidence and sound reasoning over majority vote. Do not assume a claim is true "
@@ -203,6 +234,7 @@ def build_arbiter_prompt(
     if workspace_context:
         sections.append(f"{WORKSPACE_CONTEXT_NOTICE}:\n{workspace_context.strip()}")
     sections.append(f"Original question:\n{question.strip()}")
+    sections.append(coverage_note(delegate_results, source_groups))
     note = source_note(delegate_results, source_groups)
     if note:
         sections.append(note)
@@ -221,6 +253,15 @@ def build_arbiter_prompt(
             "Critic audit (use this as analysis, not as unquestionable truth):\n"
             + _wrap("CRITIC", "CRITIC", token, body)
         )
+    if single_source_label:
+        sections.append(
+            f"{single_source_label}\n"
+            "Assess the single response above: its strengths, weaknesses, unsupported "
+            "assumptions and remaining uncertainty. Do not synthesise a consensus, do not "
+            "describe common ground or agreement, and do not present this as a comparison "
+            "of sources."
+        )
+        return "\n\n".join(sections)
     sections.append(
         "Produce the final answer for the user. Explicitly distinguish: (1) common ground, "
         "(2) material disagreements or minority insights, (3) unsupported assumptions or "

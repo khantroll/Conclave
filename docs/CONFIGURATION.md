@@ -76,6 +76,28 @@ Limits: this is based on configuration and the reported model name. It does not 
 - **The final check uses the answers that arrived.** Choosing enough sources does not guarantee enough answers. After the panel runs, `panel.quorum` reports `met`, `unmet` or `single_source_override`, counting only non-empty answers grouped into independent sources. When it is `unmet` the Critic and Arbiter are not run, and the report names each delegate that timed out, failed or returned nothing, and any answers that collapsed into one source.
 - **Single-source runs are opt-in.** A workspace (or a direct request) may set `allow_single_source: true`. Then, when exactly one independent source is available or answers, the run proceeds with one delegate and is labelled `single_source_override`: it states that the quorum was not met and is not a consensus. It never covers two sources when three are required. Without the setting, such a run stops as described above.
 
+## What the judges are told, and single-source runs
+
+**Missing answers are disclosed.** The Critic and Arbiter prompts begin their response section with `k of n delegates answered; m independent sources.`, then one line per slot that did not answer, giving only the failure kind (`timed out`, `empty` or `failed`). They never include a delegate name, a model name or an error body for a missing slot, so a partial panel cannot be mistaken for a full one.
+
+**One independent source is not a panel.** When exactly one independent source answered, the result has `single_source: true`, the Critic is never called (there is nothing to compare), and the workspace's `single_source_mode` decides how the run ends:
+
+- `return_answer`: no Arbiter. The delegate's answer is returned in `single_source_answer`, labelled as a single-source result. One call.
+- `arbiter_single_source`: the Arbiter runs with a prompt that says only one source answered and asks it to *assess* the answer, not to synthesise or describe agreement. Two calls.
+
+`single_source_mode` must be chosen explicitly whenever a workspace is saved (the API refuses a missing value). Workspaces created before this setting existed read as `return_answer`.
+
+**Two settings, two different questions.**
+
+| Setting | Question it answers | Default |
+|---|---|---|
+| `allow_single_source` | May a run start or proceed when the quorum asks for more sources than are available or answered? | `false` |
+| `single_source_mode` | When only one source answered, does the run return the answer or have the Arbiter assess it? | none; must be chosen |
+
+`single_source_mode` can never permit a below-quorum run: only `allow_single_source` does, and the quorum check runs before the mode is consulted. A workspace with a quorum of 1 is not below its quorum, so a single answer there is a single-source run but not an override.
+
+**One label everywhere.** A single-source run carries one sentence, `single_source_label`, which the console shows verbatim, the saved result stores, and the Arbiter prompt quotes. For an explicitly permitted run it reads `SINGLE-SOURCE RUN, explicitly permitted by this workspace (allow_single_source). The configured quorum of N independent sources was NOT met. This is not a consensus.` For a quorum of 1 that was met it reads `Single source: only 1 independent source answered ...`. A single-source run has no Critic to retry, and a `return_answer` run has no Arbiter to retry; those endpoints answer HTTP 409.
+
 ## Connectivity test
 
 The web console exposes an explicit **Test** button for each configured provider. It sends a tiny request to that provider. This can incur a small API charge on paid endpoints.

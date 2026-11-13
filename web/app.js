@@ -184,7 +184,8 @@ function renderWorkspaceSummary() {
       <dt>Arbiter</dt><dd>${escapeHtml(workspace.arbiter)}</dd>
       <dt>Arbiter fallback</dt><dd>${escapeHtml((workspace.arbiter_fallbacks || []).join(" → ") || "None")}</dd>
       <dt>Routing</dt><dd>${workspace.auto_select_delegates ? "Automatic subset" : "Fixed panel"}</dd>
-      <dt>Quorum</dt><dd>${workspace.minimum_successes} independent source(s)${workspace.allow_single_source ? " — single-source runs allowed (labelled, quorum not met)" : ""}</dd>
+      <dt>Quorum</dt><dd>${workspace.minimum_successes} independent source(s)${workspace.allow_single_source ? " — single-source runs allowed (labelled, quorum not met)" : " — single-source runs not allowed below the quorum"}</dd>
+      <dt>One source answers</dt><dd>${workspace.single_source_mode === "arbiter_single_source" ? "Arbiter assesses the answer" : "Answer returned, no Arbiter"}</dd>
       <dt>Context</dt><dd>${workspace.context ? "Configured" : "None"}</dd>
     </dl>
     ${overlaps.length ? `<div class="warning">⚠ ${escapeHtml(overlaps.join("; "))}</div>` : ""}
@@ -256,6 +257,7 @@ function workspaceFormBody() {
     minimum_successes: Number($("workspaceQuorum").value || 1),
     auto_select_delegates: $("workspaceAutoSelect").checked,
     allow_single_source: $("workspaceAllowSingleSource").checked,
+    single_source_mode: $("workspaceSingleSourceMode").value || null,
   };
 }
 
@@ -322,6 +324,7 @@ function beginWorkspaceEdit() {
   $("workspaceQuorum").value = String(workspace.minimum_successes);
   $("workspaceAutoSelect").checked = Boolean(workspace.auto_select_delegates);
   $("workspaceAllowSingleSource").checked = Boolean(workspace.allow_single_source);
+  $("workspaceSingleSourceMode").value = workspace.single_source_mode || "";
   $("workspaceFormSummary").textContent = "Edit workspace";
   $("workspaceSubmit").textContent = "Save changes";
   $("workspaceCancel").classList.remove("hidden");
@@ -416,7 +419,9 @@ async function deliberate() {
       ? ` ${sourceCount} independent source(s)${sameSource ? ", so some answers count as one" : ""}.`
       : "";
     const quorum = result.panel.quorum;
-    if (quorum && quorum.status !== "met") {
+    if (result.single_source_label) {
+      $("status").textContent = result.single_source_label;
+    } else if (quorum && quorum.status !== "met") {
       // Never present an unmet or overridden quorum as a normal result.
       const label = quorum.status === "single_source_override" ? "SINGLE-SOURCE RUN" : "QUORUM UNMET";
       $("status").textContent = `${label}: ${quorum.summary}`;
@@ -441,11 +446,19 @@ function renderResult(result, runId = null) {
   $("downloadRun").classList.toggle("hidden", !currentRunId);
 
   const arbiter = result.arbiter;
-  $("answerSection").classList.toggle("hidden", !arbiter);
+  // A single-source run may return the lone delegate's answer instead of an Arbiter synthesis.
+  const lone = result.single_source_answer;
+  $("answerSection").classList.toggle("hidden", !arbiter && !lone);
+  $("singleSourceBanner").classList.toggle("hidden", !result.single_source_label);
+  // The label is the server's own sentence, so the console, the saved result and the
+  // Arbiter prompt all describe the run identically.
+  $("singleSourceBanner").textContent = result.single_source_label || "";
   $("arbiterAnswer").textContent = arbiter
     ? (arbiter.raw_response || arbiter.error || arbiter.status)
-    : "";
-  $("arbiterMeta").textContent = arbiter ? formatStageMeta(arbiter) : "";
+    : (lone ? lone.text : "");
+  $("arbiterMeta").textContent = arbiter
+    ? formatStageMeta(arbiter)
+    : (lone ? `Single answer from ${lone.delegate}${lone.model ? " · " + lone.model : ""}. No Arbiter was used.` : "");
   $("arbiterPromptDetails").classList.toggle("hidden", !arbiter?.prompt);
   $("arbiterPrompt").textContent = arbiter?.prompt || "";
   $("retryArbiter").classList.toggle(
@@ -492,6 +505,15 @@ function renderResult(result, runId = null) {
   });
 }
 
+// What a retry actually refreshed, read from the returned result rather than assumed.
+function describeRefresh(result, stage) {
+  if (result.single_source_answer) return "single-source answer returned; no Critic or Arbiter ran";
+  if (result.single_source) return "the Arbiter assessed the single source; no Critic ran";
+  if (!result.panel.synthesizeable) return "quorum is still not met, so no Critic or Arbiter ran";
+  if (stage === "arbiter") return "Arbiter refreshed; the panel and Critic were kept";
+  return result.critic ? "Critic and Arbiter refreshed" : "Arbiter refreshed";
+}
+
 async function retryDelegate(name, button) {
   if (!currentRunId) return;
   button.disabled = true;
@@ -503,7 +525,7 @@ async function retryDelegate(name, button) {
     )).json();
     renderResult(run.result, run.id);
     const cost = formatCost(run.result.estimated_cost_usd);
-    $("status").textContent = `${name} retried; Critic and Arbiter refreshed.${cost ? " Estimated run cost " + cost + "." : ""}`;
+    $("status").textContent = `${name} retried; ${describeRefresh(run.result, "delegate")}.${cost ? " Estimated run cost " + cost + "." : ""}`;
     await loadHistory();
   } catch (error) {
     $("status").textContent = error.message;
@@ -524,9 +546,8 @@ async function retryStage(stage, button) {
       {method: "POST"}
     )).json();
     renderResult(run.result, run.id);
-    $("status").textContent = stage === "critic"
-      ? "Critic retried and Arbiter refreshed."
-      : "Arbiter retried.";
+    $("status").textContent =
+      `${stage === "critic" ? "Critic" : "Arbiter"} retried; ${describeRefresh(run.result, stage)}.`;
     await loadHistory();
   } catch (error) {
     $("status").textContent = error.message;

@@ -234,3 +234,17 @@ def _shortfalls(delegates: list[DelegateResult], sources: list[SourceGroup]) -> 
             why = _REASON_TEXT.get(group.reason or "", "shared identity")
             items.append(f"{', '.join(group.delegates)} count as one source ({why})")
     return items
+
+
+def describe_single_source(report: QuorumReport) -> str:
+    """The one sentence that identifies a single-source run, wherever it is shown."""
+    if report.status == "single_source_override":
+        return (
+            "SINGLE-SOURCE RUN, explicitly permitted by this workspace (allow_single_source). "
+            f"The configured quorum of {report.required} independent sources was NOT met. "
+            "This is not a consensus."
+        )
+    return (
+        f"Single source: only 1 independent source answered (the configured quorum is "
+        f"{report.required}). This is not a comparison of sources."
+    )

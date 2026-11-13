@@ -83,6 +83,7 @@ def test_demo_deliberation_runs_panel_critic_and_arbiter(client):
             "delegates": ["demo-a", "demo-b"],
             "critic": "demo-critic",
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
             "roles": {
                 "demo-a": "Focus on reliability.",
                 "demo-b": "Challenge the architecture.",
@@ -119,6 +120,7 @@ def test_deliberation_skips_critic_and_arbiter_without_quorum(tmp_path, monkeypa
             "delegates": ["demo-a", "demo-b"],
             "critic": "demo-critic",
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
             "minimum_successes": 2,
         },
     )
@@ -145,6 +147,7 @@ def test_workspace_persists_defaults_run_and_history(tmp_path):
             "roles": {"demo-b": "Act as the skeptical reviewer."},
             "critic": "demo-critic",
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
             "minimum_successes": 1,
         },
     )
@@ -202,6 +205,7 @@ def test_auto_select_workspace_uses_smaller_panel_for_simple_question(tmp_path):
             "delegates": ["demo-a", "demo-b"],
             "critic": "demo-critic",
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
             "minimum_successes": 1,
             "auto_select_delegates": True,
         },
@@ -240,6 +244,7 @@ def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_pat
             "name": "Bad",
             "delegates": ["not-configured"],
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
         },
     )
     assert bad.status_code == 422
@@ -252,6 +257,7 @@ def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_pat
             "delegates": ["demo-a", "demo-b"],
             "critic": "demo-critic",
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
             "minimum_successes": 1,
         },
     )
@@ -265,6 +271,7 @@ def test_workspace_rejects_unknown_providers_and_supports_replace_delete(tmp_pat
             "description": "Changed",
             "delegates": ["demo-a"],
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
             "minimum_successes": 1,
             "auto_select_delegates": True,
         },
@@ -288,9 +295,10 @@ def test_downstream_retry_endpoints_save_new_runs(tmp_path):
         "/api/workspaces",
         json={
             "name": "Retry",
-            "delegates": ["demo-a"],
+            "delegates": ["demo-a", "demo-b"],
             "critic": "demo-critic",
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
         },
     ).json()
 
@@ -327,6 +335,7 @@ def test_deleted_workspace_run_remains_in_global_history(tmp_path):
             "name": "Disposable",
             "delegates": ["demo-a"],
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
         },
     ).json()
 
@@ -357,6 +366,7 @@ def test_workspace_validation_rejects_duplicate_delegates_and_unknown_roles(tmp_
             "name": "Duplicate",
             "delegates": ["demo-a", "demo-a"],
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
         },
     )
     assert duplicate.status_code == 422
@@ -369,6 +379,7 @@ def test_workspace_validation_rejects_duplicate_delegates_and_unknown_roles(tmp_
             "delegates": ["demo-a"],
             "roles": {"demo-b": "Not actually selected"},
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
         },
     )
     assert bad_role.status_code == 422
@@ -388,6 +399,7 @@ def test_workspace_rejects_invalid_stage_fallbacks(tmp_path):
             "critic": "demo-critic",
             "critic_fallbacks": ["demo-critic"],
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
         },
     )
     assert duplicate_primary.status_code == 422
@@ -399,6 +411,7 @@ def test_workspace_rejects_invalid_stage_fallbacks(tmp_path):
             "name": "Unknown fallback",
             "delegates": ["demo-a"],
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
             "arbiter_fallbacks": ["not-real"],
         },
     )
@@ -432,6 +445,7 @@ async def _cancelled_deliberate(app, timeout):
         "delegates": ["demo-a", "demo-b"],
         "critic": "demo-critic",
         "arbiter": "demo-arbiter",
+        "single_source_mode": "arbiter_single_source",
         "minimum_successes": 2,
     }
     async with httpx.AsyncClient(
@@ -478,6 +492,7 @@ def test_normal_run_is_one_complete_row(tmp_path):
             "delegates": ["demo-a", "demo-b"],
             "critic": "demo-critic",
             "arbiter": "demo-arbiter",
+            "single_source_mode": "arbiter_single_source",
             "minimum_successes": 2,
         },
     )
@@ -516,6 +531,7 @@ PANEL_BODY = {
     "delegates": ["demo-a", "demo-b"],
     "critic": "demo-critic",
     "arbiter": "demo-arbiter",
+    "single_source_mode": "arbiter_single_source",
     "minimum_successes": 2,
 }
 
@@ -533,6 +549,7 @@ def test_run_gets_a_seed_and_judge_prompts_rebuild_byte_for_byte(tmp_path):
     kwargs = {
         "seed": run.request.seed,
         "response_char_limit": run.request.judge_response_char_limit,
+        "source_groups": run.result.panel.sources,
     }
     assert run.result.critic.prompt == build_critic_prompt(
         question=run.request.question, delegate_results=panel, **kwargs
@@ -563,7 +580,7 @@ def test_legacy_run_without_seed_gets_one_on_retry(tmp_path):
     client = TestClient(make_app(store))
     client.post(
         "/api/deliberate",
-        json={"question": "Q", "delegates": ["demo-a"], "arbiter": "demo-arbiter"},
+        json={"question": "Q", "delegates": ["demo-a", "demo-b"], "arbiter": "demo-arbiter"},
     )
     run = store.list_runs()[0]
     legacy = run.request.model_copy(update={"seed": None})
@@ -585,6 +602,7 @@ def test_legacy_run_without_seed_gets_one_on_retry(tmp_path):
         critic_result=stored.result.critic,
         seed=seed,
         response_char_limit=stored.request.judge_response_char_limit,
+        source_groups=stored.result.panel.sources,
     )
 
 
@@ -679,6 +697,7 @@ def test_workspace_with_two_delegates_of_one_config_saves_with_a_warning(tmp_pat
         "name": "w",
         "delegates": ["one", "two", "three"],
         "arbiter": "demo-arbiter",
+        "single_source_mode": "arbiter_single_source",
         "minimum_successes": 2,
     }
     created = _post(client, "/api/workspaces", body, 201).json()
