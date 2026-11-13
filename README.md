@@ -227,6 +227,7 @@ The main remaining uncertainties are reliability and product quality rather than
 
 ## Research notes and roadmap
 
+- [November 13, 2026 research roadmap](docs/RESEARCH_ROADMAP_2026-11-13.md): coordination fixtures, contribution-aware Critic evaluation, bounded harness changes, and verified newsletter leads on evaluation, routing, and supervised tools. Includes evidence limits and measurable proposals; no implementation is claimed.
 - [October 23, 2026 research roadmap](docs/RESEARCH_ROADMAP_2026-10-23.md): proposed experiments for runtime-enforced delegate scope, evidence-backed Critic verification, and a capped shared findings buffer, with sources, limitations, prerequisites, and measurable acceptance targets. These are proposals, not completed implementation or an expansion of MVP execution authority.
 
 ## License
