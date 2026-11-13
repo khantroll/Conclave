@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from .models import DelegateResult, DelegateStatus, ProviderProvenance, SourceGroup
-from .positions import strip_position_lines
+from .positions import parse_position, strip_position_lines
 
 SAME_CONFIG = "same_config"
 SAME_REPORTED_MODEL = "same_reported_model"
@@ -175,7 +175,8 @@ def group_sources(
         for i in range(len(succeeded)):
             for j in range(i + 1, len(succeeded)):
                 found = near_duplicate(prepared[i], prepared[j])
-                if found is not None:
+                # Text that matches is not a copy if the answers disagree about the answer.
+                if found is not None and not opposing(succeeded[i].raw_response, succeeded[j].raw_response):
                     union(i, j, NEAR_DUPLICATE_TEXT, found[1])
 
     groups: dict[int, list[int]] = {}
@@ -292,6 +293,28 @@ def near_duplicate(
         fired.append(("containment", containment))
     # Report the strongest evidence; on a tie the first rule listed wins.
     return max(fired, key=lambda item: item[1]) if fired else None
+
+
+_NEGATION = re.compile(r"\b(?:no|not|never|cannot|without|neither|nor|none)\b|n't\b", re.IGNORECASE)
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def opposing(a: str | None, b: str | None) -> bool:
+    """True when two answers whose text overlaps still say different things.
+
+    Shared background is not agreement. Answers are *not* treated as copies when their stated
+    conclusions differ, or when they carry different numbers, or a different number of negations
+    (the cheap signs that one says "do it" and the other "do not", or "5" and "50"). Keeping them
+    apart errs on the side of keeping dissent visible: it can only leave an answer counted as its
+    own source, never hide one.
+    """
+    ca, cb = parse_position(a)[0], parse_position(b)[0]
+    if ca and cb and normalize_text(ca) != normalize_text(cb):
+        return True
+    body_a, body_b = strip_position_lines(a), strip_position_lines(b)
+    if sorted(_NUMBER.findall(body_a)) != sorted(_NUMBER.findall(body_b)):
+        return True
+    return len(_NEGATION.findall(body_a)) != len(_NEGATION.findall(body_b))
 
 
 def text_similarity(a: str | None, b: str | None) -> tuple[str, float] | None:

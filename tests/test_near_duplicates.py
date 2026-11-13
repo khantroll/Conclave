@@ -230,7 +230,7 @@ async def test_a_family_inside_one_source_gets_no_separate_family_line():
     result = await orchestrator.deliberate(request)
     assert result.panel.independent_source_count == 2
     assert "same model family" not in result.arbiter.prompt
-    assert "come from the same underlying source" in result.arbiter.prompt
+    assert "nearly identical text" in result.arbiter.prompt
 
 
 async def test_a_failed_delegate_has_no_family_entry():

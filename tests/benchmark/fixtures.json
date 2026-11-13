@@ -612,7 +612,7 @@
       }
     },
     {
-      "id": "copy-with-different-closing-lines-still-collapses",
+      "id": "opposite-conclusions-over-identical-text-stay-separate",
       "question": "Is this design right?",
       "delegates": [
         {
@@ -625,6 +625,41 @@
           "name": "b",
           "copy_of": "a",
           "conclusion": "No, never.",
+          "confidence": "low"
+        },
+        {
+          "name": "c",
+          "say": "charlie"
+        }
+      ],
+      "min": 2,
+      "critic": true,
+      "arbiter": "structured",
+      "expect": {
+        "sources": 3,
+        "successes": 3,
+        "quorum": "met",
+        "judges": true,
+        "merged": [],
+        "critic_calls": 1,
+        "arbiter_calls": 1,
+        "format_ok": true
+      }
+    },
+    {
+      "id": "same-text-same-conclusion-different-confidence-still-collapses",
+      "question": "Is this design right?",
+      "delegates": [
+        {
+          "name": "a",
+          "say": "alpha",
+          "conclusion": "Yes.",
+          "confidence": "high"
+        },
+        {
+          "name": "b",
+          "copy_of": "a",
+          "conclusion": "Yes.",
           "confidence": "low"
         },
         {

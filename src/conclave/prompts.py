@@ -195,6 +195,14 @@ def source_note(
         if len(labels) < 2:
             continue
         joined = ", ".join(labels[:-1]) + f" and {labels[-1]}"
+        if group.reason == "near_duplicate_text":
+            # Only the text matched. Say that, not that it proves a shared origin.
+            lines.append(
+                f"Responses {joined} have nearly identical text. That may be copying rather than "
+                "independent reasoning, so they are counted as one source and their agreement is "
+                "weak corroboration. Their origin is not known to be the same; judge what they say."
+            )
+            continue
         lines.append(
             f"Responses {joined} come from the same underlying source. Count them as one "
             "source: their agreement is not independent corroboration."
