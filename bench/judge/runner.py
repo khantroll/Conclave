@@ -21,6 +21,7 @@ import hashlib
 import json
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from conclave.config import ConclaveConfig, load_config
@@ -197,6 +198,18 @@ async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repe
     }
 
 
+def operational_path(out: Path) -> Path:
+    return out.with_name("operational.jsonl")
+
+
+def record_operational(out: Path, judge: str, case: str, arm: str, repeat: int, reason: str) -> None:
+    """Note that a trial could not run (quota, outage). Never scored, never part of a decision."""
+    entry = {"at": datetime.now(timezone.utc).isoformat(), "judge": judge, "case": case,
+             "arm": arm, "repeat": repeat, "reason": reason}
+    with operational_path(out).open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(entry) + "\n")
+
+
 def load_results(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -219,6 +232,8 @@ async def run_all(
                     try:
                         trial = await run_trial(case, arm, judge_name, judge, repeat)
                     except JudgeUnavailable as exc:
+                        # An operational outcome (quota, outage): kept apart from the scored trials.
+                        record_operational(out, judge_name, case["id"], arm.name, repeat, str(exc))
                         log(f"stopped, not recorded: {exc}. Run again later to resume.")
                         return new
                     with out.open("a", encoding="utf-8", newline="\n") as handle:
@@ -231,7 +246,7 @@ async def run_all(
 # --------------------------------------------------------------------------------- reporting
 
 
-def report(trials: list[dict], repeats: int = DEFAULT_REPEATS) -> str:
+def report(trials: list[dict], repeats: int = DEFAULT_REPEATS, operational: list[dict] | None = None) -> str:
     """A plain-text summary: counts per arm and class, and the decision rule applied.
 
     The rule is applied only to a complete set of trials. A partial file says how much is missing
@@ -260,6 +275,11 @@ def report(trials: list[dict], repeats: int = DEFAULT_REPEATS) -> str:
             decision = scoring.decide(summary)
             out.append(f"- decision: **{decision['decision']}** ({decision['reason']})")
         out.append("")
+    if operational:
+        out.append(f"## Operational outcomes (not scored): {len(operational)} trial(s) could not run")
+        for entry in operational:
+            out.append(f"- {entry['judge']} {entry['case']} {entry['arm']} #{entry['repeat']}: {entry['reason']}")
+        out.append("")
     return "\n".join(out)
 
 
@@ -276,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.summarize:
-        print(report(load_results(args.out), args.repeats))
+        print(report(load_results(args.out), args.repeats, load_results(operational_path(args.out))))
         return 0
     if not args.judge or len(args.judge) > MAX_JUDGES:
         parser.error(f"name one or two judge providers with --judge (up to {MAX_JUDGES})")
@@ -308,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
     providers = build_providers([p for p in config.providers if p.name in args.judge])
     asyncio.run(run_all(cases, {name: providers[name] for name in args.judge}, args.repeats, args.out))
     print()
-    print(report(load_results(args.out)))
+    print(report(load_results(args.out), args.repeats, load_results(operational_path(args.out))))
     return 0
 
 

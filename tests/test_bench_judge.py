@@ -25,8 +25,10 @@ CASES = scoring.load_cases()
 def results_never_go_to_the_repository(tmp_path, monkeypatch):
     """No test may write the real results file, however a command line is (mis)handled."""
     monkeypatch.setattr(runner, "DEFAULT_OUT", tmp_path / "default-results.jsonl")
+    files = [ROOT / "bench" / "judge" / "results.jsonl", ROOT / "bench" / "judge" / "operational.jsonl"]
+    before = [f.read_bytes() if f.exists() else None for f in files]
     yield
-    assert not (ROOT / "bench" / "judge" / "results.jsonl").exists()
+    assert [f.read_bytes() if f.exists() else None for f in files] == before  # the checkpoint is never touched
 
 
 def answer(common="- Shared point. [A]", disagreements="None.", uncertainty="- Open. [A]", synthesis="Go ahead."):
@@ -415,6 +417,10 @@ def test_a_judge_outage_is_never_recorded_as_a_failed_trial(tmp_path):
     new = asyncio.run(runner.run_all(CASES[:2], {"j": Down()}, 1, out, log=logs.append))
     assert new == [] and runner.load_results(out) == []  # nothing recorded, so nothing is scored
     assert "not recorded" in logs[-1]
+    ops = runner.load_results(runner.operational_path(out))
+    assert len(ops) == 1 and ops[0]["judge"] == "j" and ops[0]["case"] == CASES[0]["id"] and "reason" in ops[0]
+    text = runner.report([], 1, ops)
+    assert "Operational outcomes (not scored): 1" in text  # reported apart from any score
 
 
 def synthetic(repeats, critic_passes, arbiter_passes, judge="j", skip=0):
