@@ -200,6 +200,7 @@ The orchestration, source counting, blinding, structured output, ledger, retry c
 
 - [November 13, 2026 research roadmap](docs/RESEARCH_ROADMAP_2026-11-13.md): coordination fixtures, contribution-aware Critic evaluation, bounded harness changes, and verified newsletter leads on evaluation, routing, and supervised tools. Includes evidence limits and measurable proposals; no implementation is claimed.
 - [October 23, 2026 research roadmap](docs/RESEARCH_ROADMAP_2026-10-23.md): proposed experiments for runtime-enforced delegate scope, evidence-backed Critic verification, and a capped shared findings buffer, with sources, limitations, prerequisites, and measurable acceptance targets. These are proposals, not completed implementation or an expansion of MVP execution authority.
+- [Release evidence](docs/RELEASE_EVIDENCE.md): what is implemented, verified, partial, blocked and deferred, with the evidence for each.
 - [Development status and next steps](docs/DEVELOPMENT_NEXT_STEPS.md): what is done, what remains, and the decisions that are still open.
 
 ## License

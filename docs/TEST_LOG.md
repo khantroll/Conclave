@@ -126,3 +126,9 @@ Commit `682c370` (main), Python 3.14, Windows. Providers (free tiers, prices con
 
 ### Status
 Not complete. Outstanding: a run with three providers answering from two named families, and reconciliation against the providers' own pages.
+
+### Addendum, same day: scenario 1 repeated, and the Gemini diagnosis
+
+Scenario 1 (all healthy) was repeated with a 150 s delegate timeout and a required quorum of 3 independent sources: groq (openai), openrouter-free (answered as `cohere/north-mini-code:free`) and gemini (google) all answered; 3 sources, quorum met, Arbiter succeeded with a well-formed structure, two declared model families (openai and google), blind prompts clean, 5 ledger rows for 5 requests. The openrouter Critic returned no text (`finish_reason: length`: it spent its 1,500 output tokens thinking), which the adapter now reports as exactly that; the Arbiter still ran. **Scenario 1: PASS** for the delegates and Arbiter; the Critic stage failed on that provider.
+
+The Gemini timing evidence and the conclusion (external latency variability, no application defect found, next check named) are in `docs/RELEASE_EVIDENCE.md`. Billing reconciliation remains **unverified**.
