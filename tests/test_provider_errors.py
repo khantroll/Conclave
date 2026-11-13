@@ -386,3 +386,23 @@ async def test_a_null_answer_that_ran_out_of_budget_says_so():
     assert error.kind == "malformed" and "max_output_tokens" in str(error) and "thinking..." not in str(error)
     plain = await _fail(Counter(httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": None}}]})))
     assert "no text answer" in str(plain) and "max_output_tokens" not in str(plain)
+
+
+async def test_a_busy_upstream_pool_that_says_insufficient_quota_is_a_retried_rate_limit():
+    body = (
+        '{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"model is '
+        'temporarily rate-limited upstream. Please retry shortly","provider_error_code":"insufficient_quota",'
+        '"limit_source":"upstream_provider_shared_pool"}}}'
+    )
+    handler = Counter(httpx.Response(429, text=body), httpx.Response(200, json=GOOD))
+    response = await _provider(handler).ask("hi")
+    assert handler.requests == 2 and response.text == "an answer"  # retried, then answered
+    error = await _fail(Counter(httpx.Response(429, text=body)), transient_max_retries=1)
+    assert error.kind == "rate_limit" and error.attempts == 2
+
+
+async def test_a_real_empty_account_is_still_a_quota_even_with_gentle_wording():
+    real = '{"error":{"message":"You exceeded your current quota, please check your plan and billing details. Please retry in 12h36m"}}'
+    assert (await _fail(Counter(httpx.Response(429, text=real)), transient_max_retries=3)).kind == "quota"
+    long_wait = httpx.Response(429, text="temporarily rate-limited, retry shortly", headers={"Retry-After": "3600"})
+    assert (await _fail(Counter(long_wait), transient_max_retries=3)).kind == "quota"  # a long wait outranks the wording
