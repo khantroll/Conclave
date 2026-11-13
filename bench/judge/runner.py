@@ -164,6 +164,11 @@ def describe(plan: dict) -> str:
 # ---------------------------------------------------------------------------------- running
 
 
+class JudgeUnavailable(RuntimeError):
+    """The judge call itself failed (rate limit, outage). That says nothing about the judge's
+    judgment, so it is never recorded as a failed trial; the run stops and can be resumed."""
+
+
 async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repeat: int) -> dict:
     providers, identities, names = scripted_panel(case)
     providers[judge_name] = judge
@@ -171,7 +176,11 @@ async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repe
     rows: list = []
     orchestrator = Orchestrator(providers, identities, ledger_sink=rows.append)
     result = await orchestrator.deliberate(build_request(case, names, arm, judge_name, seed))
-    arbiter_text = result.arbiter.raw_response if result.arbiter and result.arbiter.raw_response else None
+    stages = [s for s in (result.critic if arm.use_critic else None, result.arbiter) if s is not None or False]
+    if result.arbiter is None or any(s.status.value != "succeeded" for s in stages):
+        failed = next((s for s in stages if s.status.value != "succeeded"), None)
+        raise JudgeUnavailable(f"{judge_name}: {failed.error_kind or failed.status.value if failed else 'no answer'}")
+    arbiter_text = result.arbiter.raw_response
     checks = scoring.score_trial(case, arbiter_text, set(result.label_map))
     return {
         "case": case["id"],
@@ -207,7 +216,11 @@ async def run_all(
                 for arm in ARM_LIST:
                     if (case["id"], arm.name, repeat, judge_name) in done:
                         continue
-                    trial = await run_trial(case, arm, judge_name, judge, repeat)
+                    try:
+                        trial = await run_trial(case, arm, judge_name, judge, repeat)
+                    except JudgeUnavailable as exc:
+                        log(f"stopped, not recorded: {exc}. Run again later to resume.")
+                        return new
                     with out.open("a", encoding="utf-8", newline="\n") as handle:
                         handle.write(json.dumps(trial, ensure_ascii=False) + "\n")
                     new.append(trial)

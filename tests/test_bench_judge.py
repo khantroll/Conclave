@@ -403,14 +403,18 @@ def test_a_trial_is_scored_against_the_labels_the_judge_was_shown():
     assert trial["arm"] == "arbiter" and trial["critic"] is None and trial["judge"] == "j"
 
 
-def test_a_judge_that_fails_scores_zero_on_every_check_and_is_still_recorded():
+def test_a_judge_outage_is_never_recorded_as_a_failed_trial(tmp_path):
     class Down(Provider):
         async def ask(self, prompt):
             raise RuntimeError("provider down")
 
-    trial = asyncio.run(runner.run_trial(CASES[0], runner.ARM_LIST[0], "j", Down(), 0))
-    assert trial["arbiter"] is None and trial["arbiter_status"] == "failed"
-    assert [r["passed"] for r in trial["results"]] == [False, False]
+    with pytest.raises(runner.JudgeUnavailable):
+        asyncio.run(runner.run_trial(CASES[0], runner.ARM_LIST[0], "j", Down(), 0))
+    out = tmp_path / "r.jsonl"
+    logs = []
+    new = asyncio.run(runner.run_all(CASES[:2], {"j": Down()}, 1, out, log=logs.append))
+    assert new == [] and runner.load_results(out) == []  # nothing recorded, so nothing is scored
+    assert "not recorded" in logs[-1]
 
 
 def synthetic(repeats, critic_passes, arbiter_passes, judge="j", skip=0):
