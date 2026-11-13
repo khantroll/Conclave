@@ -86,15 +86,22 @@ def test_the_readme_states_every_limitation_the_roadmap_requires():
 
 
 def test_the_critic_default_statement_matches_the_benchmark_results_file():
+    import collections
+
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     results = (ROOT / "bench" / "judge" / "RESULTS.md").read_text(encoding="utf-8")
-    done = len((ROOT / "bench" / "judge" / "results.jsonl").read_text(encoding="utf-8").splitlines())
-    if done < 144:
-        assert "attempted, incomplete, no decision" in results.lower()
-        assert f"{done} of 144 trials" in results and f"{done} of 144 trials" in readme
-        assert "no default" in readme.lower() and "no decision" in readme.lower()
-    else:  # a complete set: the README must say where the default comes from
-        assert "bench/judge/RESULTS.md" in readme and "incomplete" not in results.lower().split("status")[1][:80]
+    rows = [json.loads(line) for line in (ROOT / "bench" / "judge" / "results.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    per_judge = collections.Counter(r["judge"] for r in rows)
+    complete = [j for j, n in per_judge.items() if n == 144]
+    for judge, n in per_judge.items():
+        if n < 144:
+            assert f"{n} of 144" in results and f"{n} of 144" in readme, judge  # incomplete judges say how incomplete
+    assert "no default" in readme.lower()
+    if complete:  # a decision exists for these judges; the README must name it and its limit
+        assert "144 of 144" in results and "one judge" in results.lower()
+        assert "default off" in results.lower() and "default off" in readme.lower()
+    else:
+        assert "no decision" in results.lower()
 
 
 def test_no_document_claims_what_is_not_built():

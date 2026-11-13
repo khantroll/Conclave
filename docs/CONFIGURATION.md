@@ -164,7 +164,7 @@ Model availability can change. If a provider Test button reports a model-not-fou
 
 ## Choosing a Critic
 
-A workspace must say whether it uses a Critic: `critic` is required when a workspace is saved or replaced, as a provider name or as an explicit `null` for none (HTTP 422 if it is left out). There is no default because the Critic's value has not been measured: `bench/judge/` is a benchmark that compares the Arbiter alone with the Critic then the Arbiter on real judge models, with a decision rule fixed in advance. It was attempted on 2026-11-13 and is incomplete (6 of 144 trials; the free tier ran out), so there is no decision. Workspaces saved before this rule are not changed. In the console the Critic field is a required choice between "No Critic" and "Use a Critic" with a provider name. The single-source mode follows the same rule.
+A workspace must say whether it uses a Critic: `critic` is required when a workspace is saved or replaced, as a provider name or as an explicit `null` for none (HTTP 422 if it is left out). There is no default because the Critic's value has not been measured: `bench/judge/` is a benchmark that compares the Arbiter alone with the Critic then the Arbiter on real judge models, with a decision rule fixed in advance. It has been run to completion on one judge model (`qwen/qwen3.7-flash`: the Critic arm scored 1.4 points below the Arbiter alone, so "default off"), and is incomplete on a second (6 of 144 trials), so there is still no default. Workspaces saved before this rule are not changed. In the console the Critic field is a required choice between "No Critic" and "Use a Critic" with a provider name. The single-source mode follows the same rule.
 
 ## Retry chains
 
