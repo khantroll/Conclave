@@ -22,6 +22,7 @@ def _isolate_env(base: Path, setenv, delenv) -> None:
     setenv("CONCLAVE_CONFIG_PATH", str(base / "conclave.json"))
     setenv("CONCLAVE_DB_PATH", str(base / "conclave.db"))
     setenv("CONCLAVE_RUN_LOG_DIR", str(base / "run_logs"))
+    setenv("CONCLAVE_ALLOWED_HOSTS", "testserver")  # the Starlette test client host
     for name in list(os.environ):
         if name.endswith("_API_KEY") or name.endswith("_KEY"):
             delenv(name)

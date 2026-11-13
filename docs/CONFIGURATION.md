@@ -183,3 +183,14 @@ The directory is ignored by Git because these logs can contain private workspace
 
 The browser's existing **Download run JSON** control remains available for manual export; the automatic audit log means a human-testing run does not depend on remembering to click it.
 
+## Local access (`CONCLAVE_ALLOWED_HOSTS`)
+
+Conclave has no login and must stay on loopback. By default the server only answers requests whose `Host` header is `127.0.0.1`, `localhost` or `[::1]` (any port). Requests other than `GET` and `HEAD` are also refused with HTTP 403 when they carry an `Origin` header that differs from `Host`; browser pages on other sites cannot trigger provider calls.
+
+To reach the server under another name, list it, comma-separated:
+
+```text
+CONCLAVE_ALLOWED_HOSTS=conclave.lan
+```
+
+Only do this on a network you trust. `extra_headers` in `conclave.json` can hold secrets, and prompts and responses are stored in plain text.
