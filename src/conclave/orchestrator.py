@@ -13,6 +13,7 @@ from .models import (
     DelegateResult,
     CallRow,
     DelegateStatus,
+    RESULT_SCHEMA_VERSION,
     PanelRequest,
     PanelResult,
     PriorAttempt,
@@ -161,6 +162,7 @@ class Orchestrator:
         ledger = current_ledger()
         cost = ledger.totals() if ledger is not None else None
         return DeliberationResult(
+            schema_version=RESULT_SCHEMA_VERSION,
             panel=panel,
             critic=critic,
             arbiter=arbiter,

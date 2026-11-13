@@ -579,25 +579,43 @@ async function retryStage(stage, button) {
   }
 }
 
+const HISTORY_PAGE = 50;
+// The summaries shown so far in each history list, so "Show older runs" can add to them.
+const historyRuns = {};
+
 async function loadHistory() {
   if (!activeWorkspaceId) {
     $("history").textContent = "No workspace selected.";
     await loadAllHistory();
     return;
   }
-  const runs = await (await api(`/api/workspaces/${activeWorkspaceId}/runs`)).json();
-  renderHistory("history", runs);
+  await loadHistoryPage("history", `/api/workspaces/${activeWorkspaceId}/runs`, false);
   await loadAllHistory();
 }
 
 async function loadAllHistory() {
-  const runs = await (await api("/api/runs")).json();
-  renderHistory("allHistory", runs);
+  await loadHistoryPage("allHistory", "/api/runs", false);
 }
 
-function renderHistory(targetId, runs) {
+// One bounded page of run summaries; `older` continues after the last run already shown.
+async function loadHistoryPage(targetId, path, older) {
+  const shown = older ? historyRuns[targetId] || [] : [];
+  const before = older && shown.length ? `&before=${encodeURIComponent(shown[shown.length - 1].id)}` : "";
+  const page = await (await api(`${path}?limit=${HISTORY_PAGE}${before}`)).json();
+  historyRuns[targetId] = shown.concat(page);
+  renderHistory(targetId, historyRuns[targetId], page.length === HISTORY_PAGE ? path : null);
+}
+
+function renderHistory(targetId, runs, morePath = null) {
   const target = $(targetId);
   target.innerHTML = historyHtml(runs, value => new Date(value).toLocaleString());
+  if (morePath) {
+    const more = document.createElement("button");
+    more.className = "secondary";
+    more.textContent = "Show older runs";
+    more.addEventListener("click", () => loadHistoryPage(targetId, morePath, true));
+    target.appendChild(more);
+  }
 
   target.querySelectorAll(".history-item").forEach(item => {
     item.addEventListener("click", async () => {

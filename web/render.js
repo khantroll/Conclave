@@ -262,29 +262,30 @@
     if (!runs.length) return "<p>No runs yet.</p>";
     return runs
       .map((run) => {
+        // `run` is a summary (see RunSummary): counts and statuses, never prompts or answers.
         const title = summarizeQuestion(run.question, 78);
         const preview = summarizeQuestion(run.question, 150);
-        const panel = run.result?.panel;
-        const delegateCount = panel?.delegates?.length ?? 0;
-        const succeeded = panel?.successful_count ?? 0;
+        const delegateCount = run.delegate_count ?? 0;
+        const succeeded = run.successful_count ?? 0;
         const critic =
-          run.result?.critic?.status === "succeeded"
+          run.critic_status === "succeeded"
             ? "Critic ✓"
-            : run.result?.critic
+            : run.critic_status
               ? "Critic ✕"
               : "No Critic";
         const arbiter =
-          run.result?.arbiter?.status === "succeeded"
+          run.arbiter_status === "succeeded"
             ? "Arbiter ✓"
-            : run.result?.arbiter
+            : run.arbiter_status
               ? "Arbiter ✕"
               : "No Arbiter";
-        const cost = formatCost(run.result?.estimated_cost_usd);
+        const cost = formatCost(run.estimated_cost_usd);
+        const state = run.status && run.status !== "complete" ? ` · ${run.status}` : "";
         return `
         <div class="history-item" data-run-id="${escapeHtml(run.id)}">
           <strong>${escapeHtml(title)}</strong>
           <div class="history-preview">${escapeHtml(preview)}</div>
-          <small>${escapeHtml(formatDate(run.created_at))} · ${succeeded}/${delegateCount} delegates · ${critic} · ${arbiter}${run.workspace_id ? "" : " · detached"}${run.parent_run_id ? " · retry" : ""}${cost ? " · " + escapeHtml(cost) : ""}</small>
+          <small>${escapeHtml(formatDate(run.created_at))} · ${succeeded}/${delegateCount} delegates · ${critic} · ${arbiter}${run.workspace_id ? "" : " · detached"}${run.parent_run_id ? " · retry" : ""}${escapeHtml(state)}${cost ? " · " + escapeHtml(cost) : ""}</small>
         </div>`;
       })
       .join("");
