@@ -310,11 +310,14 @@ def test_position_lines_play_no_part_in_near_duplicate_grouping():
 
     body = " ".join(f"word{i}" for i in range(22))
     a = f"{body}\nConclusion: alpha0 alpha1 alpha2 alpha3 alpha4 alpha5 alpha6 alpha7 alpha8 alpha9 alpha10 alpha11 alpha12 alpha13 alpha14 alpha15 alpha16 alpha17 alpha18 alpha19 alpha20 alpha21\nConfidence: high"
-    b = f"{body}\nConclusion: beta0 beta1 beta2 beta3 beta4 beta5 beta6 beta7 beta8 beta9 beta10 beta11 beta12 beta13 beta14 beta15 beta16 beta17 beta18 beta19 beta20 beta21\nConfidence: low"
+    b = f"{body}\nConclusion: alpha0 alpha1 alpha2 alpha3 alpha4 alpha5 alpha6 alpha7 alpha8 alpha9 alpha10 alpha11 alpha12 alpha13 alpha14 alpha15 alpha16 alpha17 alpha18 alpha19 alpha20 alpha21\nConfidence: low"
+    differ = f"{body}\nConclusion: beta0 beta1 beta2 beta3 beta4 beta5 beta6 beta7 beta8 beta9 beta10 beta11 beta12 beta13 beta14 beta15 beta16 beta17 beta18 beta19 beta20 beta21\nConfidence: low"
     assert strip_position_lines(a) == strip_position_lines(b) == body
     both = group_sources([_result("a", a), _result("b", b)], {})
     neither = group_sources([_result("a", body), _result("b", body)], {})
     assert [g.delegates for g in both] == [g.delegates for g in neither] == [["a", "b"]]
+    # Opposite conclusions over the same body are two answers, not one: see the second audit.
+    assert len(group_sources([_result("a", a), _result("b", differ)], {})) == 2
     # Different answers do not become copies because they share closing lines.
     other = " ".join(f"other{i}" for i in range(22))
     shared = "Conclusion: it depends\nConfidence: medium"
