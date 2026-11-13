@@ -443,6 +443,7 @@ def test_the_ledger_table_is_added_to_an_older_database(tmp_path):
     WorkspaceStore(path)
     with sqlite3.connect(path) as connection:
         connection.execute("DROP TABLE provider_calls")
+        connection.execute("DELETE FROM schema_version WHERE version >= 2")
     store = WorkspaceStore(path)
     store.record_call(
         CallRow(id="x", stage="delegate", provider="p", outcome="ok", started_at="2026-01-01T00:00:00+00:00")

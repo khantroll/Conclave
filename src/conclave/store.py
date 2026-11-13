@@ -10,16 +10,28 @@ from uuid import uuid4
 
 from .ledger import summarize
 from .models import (
+    MAX_SUMMARY_QUESTION_CHARS,
+    RESULT_SCHEMA_VERSION,
     CallRow,
     CostSummary,
     DeliberationRequest,
     DeliberationResult,
     DeliberationRun,
     PanelResult,
+    RunSummary,
     Workspace,
     WorkspaceCreate,
     WorkspaceReplace,
 )
+
+
+# The database schema, in numbered steps. A database records the newest step it has had applied.
+SCHEMA_VERSION = 3
+MIGRATION_DESCRIPTIONS = {
+    1: "original tables and early columns",
+    2: "call ledger (provider_calls)",
+    3: "retry lineage (parent_run_id, chain_root_id)",
+}
 
 
 class WorkspaceStore:
@@ -33,6 +45,8 @@ class WorkspaceStore:
     ) -> None:
         self.path = str(path)
         self.run_log_dir = Path(run_log_dir) if run_log_dir else None
+        # Where the database was copied before an upgrade, when this start upgraded one.
+        self.last_backup: Path | None = None
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -41,142 +55,264 @@ class WorkspaceStore:
         return connection
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workspaces (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    context TEXT,
-                    delegates_json TEXT NOT NULL,
-                    roles_json TEXT NOT NULL,
-                    critic TEXT,
-                    critic_fallbacks_json TEXT NOT NULL DEFAULT '[]',
-                    arbiter TEXT NOT NULL,
-                    arbiter_fallbacks_json TEXT NOT NULL DEFAULT '[]',
-                    minimum_successes INTEGER NOT NULL,
-                    auto_select_delegates INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
+        """Create or upgrade the database to ``SCHEMA_VERSION``, one numbered step at a time.
+
+        Any file that already has content is copied to a verified backup before its first step
+        runs, and a database that is already current is left untouched. The version check, the
+        backup and every step happen while holding SQLite's write lock, in one transaction, so
+        two starts at once cannot both migrate, and a failure part-way changes nothing.
+        """
+        path = Path(self.path)
+        in_memory = self.path == ":memory:"
+        existing = not in_memory and path.exists() and path.stat().st_size > 0
+        # Autocommit mode, so the transaction below is explicit. A long timeout lets a second
+        # start wait for the first to finish instead of failing.
+        connection = sqlite3.connect(self.path, timeout=60, isolation_level=None)
+        connection.row_factory = sqlite3.Row
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                current = self._schema_version(connection)
+                if current > SCHEMA_VERSION:
+                    raise RuntimeError(
+                        f"{self.path} is schema version {current}, newer than this Conclave "
+                        f"understands ({SCHEMA_VERSION}). Upgrade Conclave; the file was not "
+                        "changed."
+                    )
+                if current == SCHEMA_VERSION:
+                    connection.execute("ROLLBACK")
+                    return
+                if existing and not in_memory:
+                    # Another connection reads the file as it is now; nothing is written yet.
+                    self.last_backup = self._backup(from_version=current)
+                for version in range(current + 1, SCHEMA_VERSION + 1):
+                    connection.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS schema_version (
+                            version INTEGER PRIMARY KEY,
+                            applied_at TEXT NOT NULL,
+                            description TEXT
+                        )
+                        """
+                    )
+                    MIGRATIONS[version](self, connection)
+                    connection.execute(
+                        "INSERT INTO schema_version (version, applied_at, description) "
+                        "VALUES (?, ?, ?)",
+                        (version, _now(), MIGRATION_DESCRIPTIONS[version]),
+                    )
+                connection.execute("COMMIT")
+            except BaseException:
+                if connection.in_transaction:
+                    connection.execute("ROLLBACK")
+                raise
+        finally:
+            connection.close()
+
+    def _schema_version(self, connection: sqlite3.Connection) -> int:
+        """The newest applied step, 0 for a database with no version table. Read-only: the file
+        must not change before its backup has been made."""
+        has_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'"
+        ).fetchone()
+        if not has_table:
+            return 0
+        row = connection.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
+        return row["v"] or 0
+
+    @staticmethod
+    def _backup_stamp() -> str:
+        return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    def _reserve_backup_path(self, from_version: int) -> Path:
+        """A backup path nobody else holds, claimed atomically so two starts cannot share one."""
+        stamp = self._backup_stamp()
+        counter = 1
+        while True:
+            suffix = "" if counter == 1 else f"-{counter}"
+            target = Path(f"{self.path}.bak-{from_version}-{stamp}{suffix}")
+            try:
+                with open(target, "xb"):
+                    return target
+            except FileExistsError:
+                counter += 1
+
+    def _backup(self, *, from_version: int) -> Path:
+        """Copy the database aside, with SQLite's online backup, before it is migrated.
+
+        The copy is taken from a separate read connection (the file still has no change in it,
+        and SQLite's backup includes anything still only in a write-ahead log) and verified with
+        ``PRAGMA integrity_check``. If it cannot be made or does not verify, nothing is migrated
+        and no partial copy is left behind.
+        """
+        target = self._reserve_backup_path(from_version)
+        try:
+            with closing(sqlite3.connect(self.path, timeout=60)) as source, closing(
+                sqlite3.connect(target)
+            ) as copy:
+                source.backup(copy)
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
+        problem = self._check_backup(target)
+        if problem is not None:
+            target.unlink(missing_ok=True)
+            raise RuntimeError(f"the backup of {self.path} failed its integrity check: {problem}")
+        return target
+
+    @staticmethod
+    def _check_backup(target: Path) -> str | None:
+        """None when the copy opens and passes SQLite's integrity check."""
+        with closing(sqlite3.connect(target)) as copy:
+            verdict = copy.execute("PRAGMA integrity_check").fetchone()[0]
+        return None if verdict == "ok" else str(verdict)
+
+    # -- numbered migration steps. Each is idempotent, so a half-applied step can run again.
+
+    def _migration_1(self, connection: sqlite3.Connection) -> None:
+        """The original tables, and the columns added to them before versioning."""
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                context TEXT,
+                delegates_json TEXT NOT NULL,
+                roles_json TEXT NOT NULL,
+                critic TEXT,
+                critic_fallbacks_json TEXT NOT NULL DEFAULT '[]',
+                arbiter TEXT NOT NULL,
+                arbiter_fallbacks_json TEXT NOT NULL DEFAULT '[]',
+                minimum_successes INTEGER NOT NULL,
+                auto_select_delegates INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
-            self._ensure_column(
-                connection,
-                table="workspaces",
-                column="auto_select_delegates",
-                definition="INTEGER NOT NULL DEFAULT 0",
+            """
+        )
+        self._ensure_column(
+            connection,
+            table="workspaces",
+            column="auto_select_delegates",
+            definition="INTEGER NOT NULL DEFAULT 0",
+        )
+        self._ensure_column(
+            connection,
+            table="workspaces",
+            column="critic_fallbacks_json",
+            definition="TEXT NOT NULL DEFAULT '[]'",
+        )
+        self._ensure_column(
+            connection,
+            table="workspaces",
+            column="arbiter_fallbacks_json",
+            definition="TEXT NOT NULL DEFAULT '[]'",
+        )
+        self._ensure_column(
+            connection,
+            table="workspaces",
+            column="allow_single_source",
+            definition="INTEGER NOT NULL DEFAULT 0",
+        )
+        self._ensure_column(
+            connection,
+            table="workspaces",
+            column="single_source_mode",
+            definition="TEXT NOT NULL DEFAULT 'return_answer'",
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS deliberation_runs (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT,
+                question TEXT NOT NULL,
+                request_json TEXT,
+                result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(workspace_id) REFERENCES workspaces(id)
             )
-            self._ensure_column(
-                connection,
-                table="workspaces",
-                column="critic_fallbacks_json",
-                definition="TEXT NOT NULL DEFAULT '[]'",
+            """
+        )
+        self._ensure_column(
+            connection,
+            table="deliberation_runs",
+            column="request_json",
+            definition="TEXT",
+        )
+        self._ensure_column(
+            connection,
+            table="deliberation_runs",
+            column="status",
+            definition="TEXT NOT NULL DEFAULT 'complete'",
+        )
+        self._ensure_column(
+            connection,
+            table="deliberation_runs",
+            column="updated_at",
+            definition="TEXT",
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_deliberation_runs_workspace_created
+            ON deliberation_runs(workspace_id, created_at DESC)
+            """
+        )
+
+    def _migration_2(self, connection: sqlite3.Connection) -> None:
+        """The call ledger (P1-9)."""
+        # The call ledger: one row per provider request. A new table, so an older database
+        # simply gains it; nothing existing is rewritten. run_id is null for connectivity tests.
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS provider_calls (
+                id TEXT PRIMARY KEY,
+                run_id TEXT,
+                chain_root_id TEXT,
+                stage TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                configured_model TEXT,
+                reported_model TEXT,
+                attempt_no INTEGER NOT NULL,
+                outcome TEXT NOT NULL,
+                http_status INTEGER,
+                started_at TEXT NOT NULL,
+                latency_ms INTEGER,
+                prompt_tokens INTEGER,
+                completion_tokens INTEGER,
+                usage_json TEXT,
+                price_in_per_million REAL,
+                price_out_per_million REAL,
+                estimated_cost_usd REAL,
+                reported_cost_usd REAL,
+                reported_cost_source TEXT,
+                possibly_billed INTEGER NOT NULL DEFAULT 0
             )
-            self._ensure_column(
-                connection,
-                table="workspaces",
-                column="arbiter_fallbacks_json",
-                definition="TEXT NOT NULL DEFAULT '[]'",
-            )
-            self._ensure_column(
-                connection,
-                table="workspaces",
-                column="allow_single_source",
-                definition="INTEGER NOT NULL DEFAULT 0",
-            )
-            self._ensure_column(
-                connection,
-                table="workspaces",
-                column="single_source_mode",
-                definition="TEXT NOT NULL DEFAULT 'return_answer'",
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS deliberation_runs (
-                    id TEXT PRIMARY KEY,
-                    workspace_id TEXT,
-                    question TEXT NOT NULL,
-                    request_json TEXT,
-                    result_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY(workspace_id) REFERENCES workspaces(id)
-                )
-                """
-            )
-            self._ensure_column(
-                connection,
-                table="deliberation_runs",
-                column="request_json",
-                definition="TEXT",
-            )
-            self._ensure_column(
-                connection,
-                table="deliberation_runs",
-                column="status",
-                definition="TEXT NOT NULL DEFAULT 'complete'",
-            )
-            self._ensure_column(
-                connection,
-                table="deliberation_runs",
-                column="updated_at",
-                definition="TEXT",
-            )
-            # Retry lineage. Older rows keep NULL here and read as their own chain root.
-            self._ensure_column(
-                connection, table="deliberation_runs", column="parent_run_id", definition="TEXT"
-            )
-            self._ensure_column(
-                connection, table="deliberation_runs", column="chain_root_id", definition="TEXT"
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_deliberation_runs_workspace_created
-                ON deliberation_runs(workspace_id, created_at DESC)
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_deliberation_runs_chain
-                ON deliberation_runs(chain_root_id)
-                """
-            )
-            # The call ledger: one row per provider request. A new table, so an older database
-            # simply gains it; nothing existing is rewritten. run_id is null for connectivity tests.
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS provider_calls (
-                    id TEXT PRIMARY KEY,
-                    run_id TEXT,
-                    chain_root_id TEXT,
-                    stage TEXT NOT NULL,
-                    provider TEXT NOT NULL,
-                    configured_model TEXT,
-                    reported_model TEXT,
-                    attempt_no INTEGER NOT NULL,
-                    outcome TEXT NOT NULL,
-                    http_status INTEGER,
-                    started_at TEXT NOT NULL,
-                    latency_ms INTEGER,
-                    prompt_tokens INTEGER,
-                    completion_tokens INTEGER,
-                    usage_json TEXT,
-                    price_in_per_million REAL,
-                    price_out_per_million REAL,
-                    estimated_cost_usd REAL,
-                    reported_cost_usd REAL,
-                    reported_cost_source TEXT,
-                    possibly_billed INTEGER NOT NULL DEFAULT 0
-                )
-                """
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_provider_calls_run ON provider_calls(run_id)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_provider_calls_chain ON provider_calls(chain_root_id)"
-            )
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_provider_calls_run ON provider_calls(run_id)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_provider_calls_chain ON provider_calls(chain_root_id)"
+        )
+
+
+    def _migration_3(self, connection: sqlite3.Connection) -> None:
+        """Retry lineage (P1-10). Older rows keep NULL here and read as their own chain root."""
+        self._ensure_column(
+            connection, table="deliberation_runs", column="parent_run_id", definition="TEXT"
+        )
+        self._ensure_column(
+            connection, table="deliberation_runs", column="chain_root_id", definition="TEXT"
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_deliberation_runs_chain
+            ON deliberation_runs(chain_root_id)
+            """
+        )
+
 
     def _ensure_column(
         self,
@@ -201,7 +337,7 @@ class WorkspaceStore:
             updated_at=now,
             **request.model_dump(),
         )
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO workspaces (
@@ -243,7 +379,7 @@ class WorkspaceStore:
             updated_at=_now(),
             **request.model_dump(),
         )
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 UPDATE workspaces
@@ -277,7 +413,7 @@ class WorkspaceStore:
     def delete(self, workspace_id: str) -> bool:
         if self.get(workspace_id) is None:
             return False
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 "UPDATE deliberation_runs SET workspace_id = NULL WHERE workspace_id = ?",
                 (workspace_id,),
@@ -286,14 +422,14 @@ class WorkspaceStore:
         return True
 
     def list(self) -> list[Workspace]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(
                 "SELECT * FROM workspaces ORDER BY name COLLATE NOCASE"
             ).fetchall()
         return [self._workspace_from_row(row) for row in rows]
 
     def get(self, workspace_id: str) -> Workspace | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 "SELECT * FROM workspaces WHERE id = ?", (workspace_id,)
             ).fetchone()
@@ -338,6 +474,7 @@ class WorkspaceStore:
     ) -> DeliberationRun:
         """Insert a ``running`` row before any provider is called."""
         empty = DeliberationResult(
+            schema_version=RESULT_SCHEMA_VERSION,
             panel=PanelResult(
                 question=question,
                 delegates=[],
@@ -384,7 +521,7 @@ class WorkspaceStore:
             status=status,
             updated_at=now,
         )
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO deliberation_runs (
@@ -414,7 +551,7 @@ class WorkspaceStore:
         status: str,
     ) -> None:
         """Store the result so far. The run log is written once the run ends."""
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 UPDATE deliberation_runs
@@ -446,7 +583,7 @@ class WorkspaceStore:
     def _mark_interrupted(self, *, run_id: str | None) -> int:
         where = "status = 'running'" + (" AND id = ?" if run_id else "")
         params: tuple = (run_id,) if run_id else ()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             ids = [
                 row["id"]
                 for row in connection.execute(
@@ -517,6 +654,66 @@ class WorkspaceStore:
             rows = connection.execute(sql, params).fetchall()
         return [self._run_from_row(row) for row in rows]
 
+    def list_run_summaries(
+        self,
+        workspace_id: str | None = None,
+        *,
+        include_all_attempts: bool = False,
+        limit: int = 50,
+        before: str | None = None,
+    ) -> list[RunSummary]:
+        """A bounded page of run summaries, newest first.
+
+        ``before`` is a run id: only runs older than it are returned (keyset paging, so a page
+        never repeats or skips a run even while new runs arrive). Raises ``KeyError`` for an
+        unknown ``before``. By default only the newest run of each retry chain is listed.
+        """
+        cursor: tuple[str, int] | None = None
+        if before is not None:
+            with closing(self._connect()) as connection:
+                row = connection.execute(
+                    "SELECT created_at, rowid AS run_rowid FROM deliberation_runs WHERE id = ?",
+                    (before,),
+                ).fetchone()
+            if row is None:
+                raise KeyError(before)
+            cursor = (row["created_at"], row["run_rowid"])
+        params: list = []
+        scope = ""
+        if workspace_id is not None:
+            scope = "WHERE workspace_id = ?"
+            params.append(workspace_id)
+        after = ""
+        if cursor is not None:
+            after = "AND (created_at, run_rowid) < (?, ?)" if not include_all_attempts else ""
+        if include_all_attempts:
+            clauses = [scope.removeprefix("WHERE ")] if scope else []
+            if cursor is not None:
+                clauses.append("(created_at, rowid) < (?, ?)")
+                params.extend(cursor)
+            where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            sql = (
+                f"SELECT * FROM deliberation_runs {where} "
+                "ORDER BY created_at DESC, rowid DESC LIMIT ?"
+            )
+        else:
+            sql = f"""
+                SELECT * FROM (
+                    SELECT r.*, r.rowid AS run_rowid, ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(r.chain_root_id, r.id)
+                        ORDER BY r.created_at DESC, r.rowid DESC
+                    ) AS attempt_rank
+                    FROM deliberation_runs r {scope}
+                ) WHERE attempt_rank = 1 {after}
+                ORDER BY created_at DESC, run_rowid DESC LIMIT ?
+            """
+            if cursor is not None:
+                params.extend(cursor)
+        params.append(limit)
+        with closing(self._connect()) as connection:
+            rows = connection.execute(sql, params).fetchall()
+        return [summarize_run(self._run_from_row(row)) for row in rows]
+
     def chain_runs(self, chain_root_id: str) -> list[DeliberationRun]:
         """Every attempt in a retry chain, oldest first."""
         with closing(self._connect()) as connection:
@@ -528,7 +725,7 @@ class WorkspaceStore:
         return [self._run_from_row(row) for row in rows]
 
     def get_run(self, run_id: str) -> DeliberationRun | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 "SELECT * FROM deliberation_runs WHERE id = ?", (run_id,)
             ).fetchone()
@@ -629,5 +826,40 @@ class WorkspaceStore:
         )
 
 
+def summarize_run(run: DeliberationRun) -> RunSummary:
+    result, panel = run.result, run.result.panel
+    question = run.question
+    truncated = len(question) > MAX_SUMMARY_QUESTION_CHARS
+    return RunSummary(
+        id=run.id,
+        workspace_id=run.workspace_id,
+        question=question[:MAX_SUMMARY_QUESTION_CHARS] if truncated else question,
+        question_truncated=truncated,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+        status=run.status,
+        parent_run_id=run.parent_run_id,
+        chain_root_id=run.chain_root_id,
+        delegate_count=len(panel.delegates),
+        successful_count=panel.successful_count,
+        failed_count=panel.failed_count,
+        independent_source_count=panel.independent_source_count,
+        quorum_status=panel.quorum.status if panel.quorum else None,
+        critic_status=result.critic.status.value if result.critic else None,
+        arbiter_status=result.arbiter.status.value if result.arbiter else None,
+        single_source=result.single_source,
+        insufficient_evidence=result.insufficient_evidence,
+        estimated_cost_usd=result.estimated_cost_usd,
+        cost=result.cost,
+    )
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+MIGRATIONS = {
+    1: WorkspaceStore._migration_1,
+    2: WorkspaceStore._migration_2,
+    3: WorkspaceStore._migration_3,
+}

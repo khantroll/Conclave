@@ -89,12 +89,13 @@ for (const fixture of fixtures) {
       question: v,
       created_at: v,
       workspace_id: v,
-      result: {
-        panel: { delegates: [{}, {}], successful_count: 1 },
-        critic: { status: v },
-        arbiter: { status: v },
-        estimated_cost_usd: 0.25,
-      },
+      status: v,
+      parent_run_id: v,
+      delegate_count: 2,
+      successful_count: 1,
+      critic_status: v,
+      arbiter_status: v,
+      estimated_cost_usd: 0.25,
     });
     const hostile = render.historyHtml([make(fixture.text)], (value) => String(value));
     const control = render.historyHtml([make("x")], (value) => String(value));
@@ -310,4 +311,13 @@ test("a retry is marked in the history list", () => {
   assert.match(render.historyHtml(make({ parent_run_id: "p" }), String), / · retry/);
   assert.doesNotMatch(render.historyHtml(make({}), String), / · retry/);
   assert.doesNotMatch(render.historyHtml(make({ parent_run_id: null }), String), / · retry/);
+});
+
+test("the history list reads summary fields and shows a run that is not complete", () => {
+  const html = render.historyHtml(
+    [{ id: "r", question: "q", created_at: "t", workspace_id: null, status: "interrupted", delegate_count: 3, successful_count: 2, critic_status: "failed", arbiter_status: null, estimated_cost_usd: 0.5 }],
+    String,
+  );
+  assert.match(html, /2\/3 delegates · Critic ✕ · No Arbiter · detached · interrupted · \$0\.500/);
+  assert.doesNotMatch(render.historyHtml([{ id: "r", question: "q", created_at: "t", status: "complete" }], String), /complete/);
 });

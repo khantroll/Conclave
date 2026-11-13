@@ -6,7 +6,7 @@ import secrets
 from uuid import uuid4
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -16,6 +16,7 @@ from .ledger import CallContext
 from .models import (
     CallRow,
     DelegateStatus,
+    RunSummary,
     AnalyzeRequest,
     DeliberationRequest,
     DeliberationResult,
@@ -40,7 +41,11 @@ from .quorum import QuorumUnmet, plan_delegates
 from .security import LoopbackGuardMiddleware
 from .selection import rank_candidates, select_delegates
 from .sources import sharing_config
-from .store import WorkspaceStore
+from .store import WorkspaceStore, summarize_run
+
+
+DEFAULT_PAGE = 50
+MAX_PAGE = 200
 
 
 def create_app(
@@ -377,26 +382,48 @@ def create_app(
 
     @app.get(
         "/api/workspaces/{workspace_id}/runs",
-        response_model=list[DeliberationRun],
+        response_model=list[RunSummary],
     )
     async def list_workspace_runs(
-        workspace_id: str, all_attempts: bool = False
-    ) -> list[DeliberationRun]:
+        workspace_id: str,
+        all_attempts: bool = False,
+        limit: int = Query(DEFAULT_PAGE, ge=1, le=MAX_PAGE),
+        before: str | None = None,
+    ) -> list[RunSummary]:
         if store.get(workspace_id) is None:
             raise HTTPException(status_code=404, detail="Workspace not found")
-        return store.list_runs(workspace_id, include_all_attempts=all_attempts)
+        return _page(workspace_id, all_attempts, limit, before)
 
-    @app.get("/api/runs", response_model=list[DeliberationRun])
-    async def list_all_runs(all_attempts: bool = False) -> list[DeliberationRun]:
-        """The newest run of each retry chain; ``?all_attempts=true`` lists every attempt."""
-        return store.list_runs(include_all_attempts=all_attempts)
+    @app.get("/api/runs", response_model=list[RunSummary])
+    async def list_all_runs(
+        all_attempts: bool = False,
+        limit: int = Query(DEFAULT_PAGE, ge=1, le=MAX_PAGE),
+        before: str | None = None,
+    ) -> list[RunSummary]:
+        """Summaries of the newest run of each retry chain, newest first.
 
-    @app.get("/api/runs/{run_id}/chain", response_model=list[DeliberationRun])
-    async def get_run_chain(run_id: str) -> list[DeliberationRun]:
+        ``?all_attempts=true`` lists every attempt; ``limit`` (default 50, at most 200) and
+        ``before`` (a run id, for the next page) bound the list. Full detail, including every
+        prompt and answer, is ``GET /api/runs/{id}``.
+        """
+        return _page(None, all_attempts, limit, before)
+
+    def _page(
+        workspace_id: str | None, all_attempts: bool, limit: int, before: str | None
+    ) -> list[RunSummary]:
+        try:
+            return store.list_run_summaries(
+                workspace_id, include_all_attempts=all_attempts, limit=limit, before=before
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="'before' is not a known run id") from exc
+
+    @app.get("/api/runs/{run_id}/chain", response_model=list[RunSummary])
+    async def get_run_chain(run_id: str) -> list[RunSummary]:
         """Every attempt in the retry chain a run belongs to, from the root to the newest."""
         if store.get_run(run_id) is None:
             raise HTTPException(status_code=404, detail="Deliberation run not found")
-        return store.chain_runs(store.chain_root_of(run_id))
+        return [summarize_run(run) for run in store.chain_runs(store.chain_root_of(run_id))]
 
     @app.get("/api/runs/{run_id}", response_model=DeliberationRun)
     async def get_run(run_id: str) -> DeliberationRun:

@@ -406,6 +406,7 @@ def test_allow_single_source_is_stored_with_the_workspace_and_migrates(tmp_path)
 
     conn = sqlite3.connect(path)
     conn.execute("ALTER TABLE workspaces DROP COLUMN allow_single_source")  # a pre-change database
+    conn.execute("DELETE FROM schema_version")  # unversioned, as such a database was
     conn.commit()
     conn.close()
     reopened = WorkspaceStore(path)

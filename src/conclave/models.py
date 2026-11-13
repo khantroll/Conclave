@@ -230,7 +230,13 @@ class DeliberationRequest(BaseModel):
     selection: SelectionTrace | None = None
 
 
+# The shape of a stored result. Bump it when a stored result gains or changes a field in a way
+# that a reader of old rows needs to know about. Results saved before versioning read as None.
+RESULT_SCHEMA_VERSION = 1
+
+
 class DeliberationResult(BaseModel):
+    schema_version: int | None = None
     panel: PanelResult
     critic: DelegateResult | None = None
     arbiter: DelegateResult | None = None
@@ -308,6 +314,38 @@ class DeliberationRun(BaseModel):
     chain_root_id: str | None = None
     # Cost of every call in this run's retry chain, from the call ledger (None for old runs).
     chain_cost: CostSummary | None = None
+
+
+class RunSummary(BaseModel):
+    """What a history list needs about a run, and nothing that grows with prompt or answer size.
+
+    Full detail (prompts, answers, positions, structure) stays on ``GET /api/runs/{id}``.
+    """
+
+    id: str
+    workspace_id: str | None = None
+    # Cut to MAX_SUMMARY_QUESTION_CHARS so a long question cannot make a list grow.
+    question: str
+    question_truncated: bool = False
+    created_at: str
+    updated_at: str | None = None
+    status: str
+    parent_run_id: str | None = None
+    chain_root_id: str | None = None
+    delegate_count: int = 0
+    successful_count: int = 0
+    failed_count: int = 0
+    independent_source_count: int | None = None
+    quorum_status: str | None = None
+    critic_status: str | None = None
+    arbiter_status: str | None = None
+    single_source: bool = False
+    insufficient_evidence: bool = False
+    estimated_cost_usd: float | None = None
+    cost: CostSummary | None = None
+
+
+MAX_SUMMARY_QUESTION_CHARS = 300
 
 
 class RequestComplexity(StrEnum):

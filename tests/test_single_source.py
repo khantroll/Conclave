@@ -349,6 +349,7 @@ def test_single_source_mode_is_stored_and_legacy_rows_default_to_return_answer(t
     assert store.get(saved.id).single_source_mode == "arbiter_single_source"
     conn = sqlite3.connect(path)
     conn.execute("ALTER TABLE workspaces DROP COLUMN single_source_mode")  # a pre-P1-1 database
+    conn.execute("DELETE FROM schema_version")  # unversioned, as such a database was
     conn.commit()
     conn.close()
     assert WorkspaceStore(path).get(saved.id).single_source_mode == "return_answer"
