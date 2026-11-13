@@ -42,3 +42,4 @@ The research roadmaps (`RESEARCH_ROADMAP_2026-10-23.md` and `RESEARCH_ROADMAP_20
 - A timeout result keeps the default attempt count, not an exact count of interrupted HTTP requests (the call ledger does record the abandoned request).
 - Each fallback provider gets its own timeout, so a stage with several fallbacks can take longer than one timeout.
 - Current account quotas, model availability and response quality need live testing with your own configuration.
+- **Gemini's free tier allows 20 requests per day per model** (observed 2026-11-13 for `gemini-3.6-flash`). That is enough to try Gemini, not to rely on it or to run a benchmark.
