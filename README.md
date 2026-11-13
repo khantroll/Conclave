@@ -136,6 +136,12 @@ Then open the Conclave web console at `http://127.0.0.1:8000/` or the FastAPI do
 
 The built-in `demo-*` providers exist only to exercise orchestration before real provider configuration is added.
 
+### Running safely
+
+Conclave has **no login**. Keep the server on loopback (`127.0.0.1`, the uvicorn default) and do not publish its port. Anyone who can reach it can spend your provider credit and read your stored prompts and responses, which are kept in plain text in the SQLite database and `run_logs/`.
+
+The server refuses requests whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`, and refuses any request other than `GET` and `HEAD` whose `Origin` differs from its `Host`, so a web page open in your browser cannot make it spend provider calls. If you deliberately reach it under another name, list that host in `CONCLAVE_ALLOWED_HOSTS` (comma-separated); that widens who can use it, so only do it on a network you trust.
+
 ## Likely architecture
 
 The current direction is intentionally provisional.

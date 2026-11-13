@@ -30,6 +30,7 @@ from .models import (
 from .orchestrator import Orchestrator
 from .providers.fake import FakeProvider
 from .providers.factory import build_providers
+from .security import LoopbackGuardMiddleware
 from .selection import select_delegates
 from .store import WorkspaceStore
 
@@ -40,17 +41,22 @@ def create_app(
     workspace_store: WorkspaceStore | None = None,
     run_log_dir: str | Path | None = None,
     load_env: bool = True,
+    allowed_hosts: list[str] | None = None,
 ) -> FastAPI:
     """Build the application.
 
     When ``config`` is given, no configuration file or ``.env`` is read. When
     ``workspace_store`` is given, no database or run-log directory is opened.
+    ``allowed_hosts`` adds to the loopback hosts that may reach the server; when omitted,
+    ``CONCLAVE_ALLOWED_HOSTS`` (comma-separated) is used.
     """
     app = FastAPI(
         title="Conclave",
         version="0.1.0",
         description="Deterministic multi-model deliberation and synthesis.",
     )
+
+    app.add_middleware(LoopbackGuardMiddleware, allowed_hosts=allowed_hosts)
 
     web_dir = Path(__file__).resolve().parents[2] / "web"
     app.mount("/static", StaticFiles(directory=web_dir), name="static")
