@@ -552,9 +552,30 @@ def create_app(
                 parent_run_id=run_id,
                 chain_root_id=chain_root,
             )
+            # Until this retry has produced something of its own, the new run holds what it
+            # builds on (the panel), not the stages it is about to replace.
+            store.update_run(
+                new_id,
+                run.result.model_copy(
+                    update={
+                        "critic": None,
+                        "arbiter": None,
+                        "arbiter_structure": None,
+                        "single_source_answer": None,
+                        "cost": None,
+                        "estimated_cost_usd": None,
+                    }
+                ),
+                "running",
+            )
             context = CallContext(run_id=new_id, chain_root_id=chain_root)
+
+            async def on_stage(partial: DeliberationResult) -> None:
+                # Each finished stage is saved at once, so a cancelled retry keeps what it did.
+                store.update_run(new_id, partial, "running")
+
             try:
-                result = await call(request, run.result, context)
+                result = await call(request, run.result, context, on_stage)
             except ValueError as exc:
                 # Refused before any provider was called: there is nothing to keep.
                 store.discard_run(new_id)
@@ -587,8 +608,12 @@ def create_app(
         return await _retry(
             run_id,
             404,
-            lambda request, prior, context: orchestrator.retry_delegate(
-                request=request, prior_result=prior, delegate_name=delegate_name, call_context=context
+            lambda request, prior, context, on_stage: orchestrator.retry_delegate(
+                request=request,
+                prior_result=prior,
+                delegate_name=delegate_name,
+                call_context=context,
+                on_stage=on_stage,
             ),
         )
 
@@ -597,8 +622,8 @@ def create_app(
         return await _retry(
             run_id,
             409,
-            lambda request, prior, context: orchestrator.retry_critic(
-                request=request, prior_result=prior, call_context=context
+            lambda request, prior, context, on_stage: orchestrator.retry_critic(
+                request=request, prior_result=prior, call_context=context, on_stage=on_stage
             ),
         )
 
@@ -607,8 +632,8 @@ def create_app(
         return await _retry(
             run_id,
             409,
-            lambda request, prior, context: orchestrator.retry_arbiter(
-                request=request, prior_result=prior, call_context=context
+            lambda request, prior, context, on_stage: orchestrator.retry_arbiter(
+                request=request, prior_result=prior, call_context=context, on_stage=on_stage
             ),
         )
 
