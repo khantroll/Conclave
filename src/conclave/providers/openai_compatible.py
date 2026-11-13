@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -9,6 +10,9 @@ from typing import Any
 import httpx
 
 from .base import Provider, ProviderError, ProviderResponse
+
+
+_SENSITIVE_HEADER = re.compile(r"auth|key|token|secret|cookie|password|credential", re.IGNORECASE)
 
 
 class OpenAICompatibleProvider(Provider):
@@ -69,7 +73,8 @@ class OpenAICompatibleProvider(Provider):
                 # A transport failure may occur after a request was accepted.
                 # Preserve attempts without automatically replaying that request.
                 raise ProviderError(
-                    str(exc).strip() or f"{type(exc).__name__}: provider request failed",
+                    self._redact(str(exc).strip())
+                    or f"{type(exc).__name__}: provider request failed",
                     attempts=attempt,
                 ) from exc
 
@@ -77,13 +82,17 @@ class OpenAICompatibleProvider(Provider):
                 break
 
             if response.status_code not in {429, 502, 503, 504} or attempt >= max_attempts:
-                body = response.text.strip().replace("\n", " ")
+                body = self._redact(response.text.strip().replace("\n", " "))
                 if len(body) > 500:
                     body = f"{body[:500]}..."
                 suffix = f" after {attempt} attempt(s)" if attempt > 1 else ""
+                # Redact the finished message as well: the reason phrase and the URL are
+                # provider-controlled or configured text that ends up in a stored error.
                 raise ProviderError(
-                    f"HTTP {response.status_code} from {self.base_url}{suffix}: "
-                    f"{body or response.reason_phrase}",
+                    self._redact(
+                        f"HTTP {response.status_code} from {self.base_url}{suffix}: "
+                        f"{body or response.reason_phrase}"
+                    ),
                     attempts=attempt,
                 )
 
@@ -138,6 +147,23 @@ class OpenAICompatibleProvider(Provider):
                 headers=headers,
                 json=payload,
             )
+
+    def _redact(self, text: str) -> str:
+        """Remove this provider's secrets from text that will be stored or shown.
+
+        Error bodies from some providers echo the credential they rejected. The API key is
+        always redacted, whatever its length. An ``extra_headers`` value is redacted when its
+        header name looks like a credential (key, token, secret, auth, cookie, password) or
+        when the value is at least 8 characters; shorter values of other headers are left
+        alone, because they are almost always plain flags that redaction would mangle.
+        """
+        secrets = [self.api_key] if self.api_key else []
+        for name, value in self.extra_headers.items():
+            if value and (len(value) >= 8 or _SENSITIVE_HEADER.search(name)):
+                secrets.append(value)
+        for secret in sorted(set(secrets), key=len, reverse=True):
+            text = text.replace(secret, "[redacted]")
+        return text
 
     def _retry_delay(self, response: httpx.Response, attempt: int) -> float:
         retry_after = response.headers.get("Retry-After")

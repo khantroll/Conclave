@@ -20,6 +20,10 @@ jobs:
       - name: Lint Python
         run: ruff check src tests
       - name: Check browser JavaScript syntax
-        run: node --check web/app.js
+        run: |
+          node --check web/app.js
+          node --check web/render.js
+      - name: Test browser rendering (adversarial corpus)
+        run: node --test web/render.test.mjs
       - name: Test
         run: pytest -q

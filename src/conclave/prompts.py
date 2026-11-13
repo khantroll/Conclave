@@ -86,6 +86,17 @@ def prepare_untrusted_text(text: str | None, *, limit: int = DEFAULT_RESPONSE_CH
     return escape_markers(escape_unsafe_characters(text)) + note
 
 
+def header_text(value: str, limit: int = 80) -> str:
+    """Provider-reported metadata (such as the model name) shown outside a response's markers.
+
+    It comes from the provider's reply, so it is untrusted: this makes it one short, inert
+    line (no newlines, control or bidirectional characters, or marker sequences).
+    """
+    flat = " ".join(escape_unsafe_characters(value).split())
+    flat = escape_markers(flat)
+    return flat if len(flat) <= limit else flat[:limit] + "\u2026"
+
+
 def _label(index: int) -> str:
     label = ""
     index += 1
@@ -112,7 +123,7 @@ def _successful_response_blocks(
     ]
     for index, result in enumerate(successful):
         label = _label(index)
-        model = f" ({result.model})" if result.model else ""
+        model = f" ({header_text(result.model)})" if result.model else ""
         body = prepare_untrusted_text(result.raw_response, limit=response_char_limit)
         blocks.append(
             f"Response {label}: {result.name}{model}\n"
