@@ -37,6 +37,7 @@ class Provider(ABC):
 #   transport     the request failed on the way (a refused connection is retried, the rest not).
 #   malformed     the reply was not a usable chat completion.
 #   empty_response  set by the orchestrator when the reply held no text.
+#   prompt_too_large  the prompt is over the provider's max_prompt_chars: nothing was sent.
 RETRYABLE_KINDS = frozenset({"rate_limit", "capacity"})
 # A Retry-After longer than this means "come back later", which is a quota, not a rate limit.
 QUOTA_RETRY_AFTER_SECONDS = 60.0
