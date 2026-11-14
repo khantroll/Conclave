@@ -253,3 +253,13 @@ async def test_runs_saved_before_this_change_still_load():
                      "synthesizeable": False}}
     assert DeliberationResult.model_validate(old).arbiter_structure is None
     assert ArbiterStructure.model_validate({"format_ok": False}).sections == {}
+
+
+def test_the_arbiter_must_report_coverage_and_shared_sources_under_uncertainty():
+    text = ARBITER_FORMAT_REQUEST
+    assert "first point under ## Uncertainty" in text and "report coverage" in text
+    assert "k of n delegates answered" in text and "count as one source" in text
+    assert "say that instead" in text  # the all-answered, nothing-shared case is stated too
+    # It asks the judge to use what the prompt already says; it names no provider or model.
+    for word in ("provider", "model name", "latency"):
+        assert word not in text.lower()

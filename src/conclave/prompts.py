@@ -304,7 +304,11 @@ ARBITER_FORMAT_REQUEST = (
     "with the labels of the responses it rests on, for example [A] or [A, C]. Common ground "
     "is what the responses genuinely share; Disagreements are material disagreements and "
     "minority insights worth keeping (write None. if there are none); Uncertainty is "
-    "unsupported assumptions and what remains unknown. Under ## Synthesis give your final "
+    "unsupported assumptions and what remains unknown. The first point under ## Uncertainty "
+    "must report coverage: how many delegates answered (the \"k of n delegates answered\" line "
+    "above) and which responses, by label, count as one source (the lines above that say so); "
+    "if every delegate answered and no responses share a source, say that instead. Under "
+    "## Synthesis give your final "
     "answer or recommendation; begin it with the words \"Insufficient evidence\" if the "
     "responses do not support an answer. Do not merely summarize each delegate in sequence."
 )

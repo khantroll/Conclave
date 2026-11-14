@@ -27,6 +27,7 @@ from pathlib import Path
 from conclave.config import ConclaveConfig, load_config
 from conclave.models import DeliberationRequest
 from conclave.orchestrator import Orchestrator
+from conclave.prompts import ARBITER_FORMAT_REQUEST
 from conclave.providers.base import Provider, ProviderResponse
 from conclave.providers.factory import build_providers
 from conclave.providers.fake import FakeProvider
@@ -37,6 +38,15 @@ from . import scoring
 HERE = Path(__file__).parent
 DEFAULT_OUT = HERE / "results.jsonl"
 DEFAULT_REPEATS = 3
+# Trials recorded before the Arbiter was told to state coverage have no ``prompt`` field. Results
+# are kept apart by the Arbiter instruction they were produced under, so a changed prompt is
+# measured afresh and never mixed with, or skipped as, an older run.
+ORIGINAL_PROMPT = "original"
+PROMPT_VERSION = hashlib.sha1(ARBITER_FORMAT_REQUEST.encode()).hexdigest()[:8]
+
+
+def prompt_of(trial: dict) -> str:
+    return trial.get("prompt", ORIGINAL_PROMPT)
 MAX_JUDGES = 2
 # Planning figures for the estimate only; the real numbers come from the ledger afterwards.
 ASSUMED_OUTPUT_TOKENS = 900
@@ -189,6 +199,7 @@ async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repe
         "arm": arm.name,
         "repeat": repeat,
         "judge": judge_name,
+        "prompt": PROMPT_VERSION,
         "seed": seed,
         "arbiter": arbiter_text,
         "critic": result.critic.raw_response if result.critic else None,
@@ -221,7 +232,7 @@ async def run_all(
 ) -> list[dict]:
     """Run every missing trial, appending each to ``out`` as it finishes (so an interrupted run
     resumes where it stopped and nothing already paid for is run again)."""
-    done = {(t["case"], t["arm"], t["repeat"], t["judge"]) for t in load_results(out)}
+    done = {(t["case"], t["arm"], t["repeat"], t["judge"]) for t in load_results(out) if prompt_of(t) == PROMPT_VERSION}
     new: list[dict] = []
     for judge_name, judge in judges.items():
         for case in cases:
@@ -254,11 +265,11 @@ def report(trials: list[dict], repeats: int = DEFAULT_REPEATS, operational: list
     one the whole set gives.
     """
     out = []
-    for judge in sorted({t["judge"] for t in trials}):
-        mine = [t for t in trials if t["judge"] == judge]
+    for judge, version in sorted({(t["judge"], prompt_of(t)) for t in trials}):
+        mine = [t for t in trials if t["judge"] == judge and prompt_of(t) == version]
         summary = scoring.summarize(mine)
         absent = scoring.missing_trials(mine, repeats)
-        out.append(f"## {judge}  ({len(mine)} trials)")
+        out.append(f"## {judge}, Arbiter prompt `{version}`  ({len(mine)} trials)")
         for arm in scoring.ARMS:
             cell = summary["arm"][arm]
             out.append(f"- {arm}: {cell['passed']}/{cell['total']} checks passed ({scoring.rate(cell):.1f}%)")
