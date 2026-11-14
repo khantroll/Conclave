@@ -251,7 +251,8 @@ def load_results(path: Path) -> list[dict]:
 
 
 async def run_all(
-    cases: list[dict], judges: dict[str, Provider], repeats: int, out: Path, *, log=print
+    cases: list[dict], judges: dict[str, Provider], repeats: int, out: Path, *, log=print,
+    max_spend_usd: float | None = None,
 ) -> list[dict]:
     """Run every missing trial, appending each to ``out`` as it finishes (so an interrupted run
     resumes where it stopped and nothing already paid for is run again)."""
@@ -261,6 +262,7 @@ async def run_all(
         if prompt_of(t) == PROMPT_VERSION
     }
     new: list[dict] = []
+    spent = 0.0
     for judge_name, judge in judges.items():
         for case in cases:
             for repeat in range(repeats):
@@ -277,6 +279,10 @@ async def run_all(
                     with out.open("a", encoding="utf-8", newline="\n") as handle:
                         handle.write(json.dumps(trial, ensure_ascii=False) + "\n")
                     new.append(trial)
+                    spent += ((trial.get("cost") or {}).get("estimated_total_usd")) or 0.0
+                    if max_spend_usd is not None and spent >= max_spend_usd:
+                        log(f"stopped: this run has spent about ${spent:.2f}, at the --max-spend limit of ${max_spend_usd:.2f}. Run again to resume.")
+                        return new
                     log(f"{judge_name} {case['id']} {arm.name} #{repeat}: {sum(r['passed'] for r in trial['results'])}/{len(trial['results'])}")
     return new
 
@@ -329,6 +335,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--dry-run", action="store_true", help="print the estimate and stop; no model is called")
     parser.add_argument("--approve-cost", type=float, default=None, help="the most you approve spending, in USD")
+    parser.add_argument("--max-spend", type=float, default=None, help="stop the run once its ledger-estimated spend reaches this many USD (a hard stop, checked after every trial)")
     parser.add_argument("--approve-unpriced", action="store_true", help="also approve a run whose cost cannot be estimated (no price configured)")
     parser.add_argument("--summarize", action="store_true", help="summarize --out and stop")
     parser.add_argument("--rescore", action="store_true", help="score the saved answers in --out again with the current scorer (no model is called) and stop")
@@ -370,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
               f"{'was not given' if args.approve_cost is None else f'is only {args.approve_cost}'}.", file=sys.stderr)
         return 2
     providers = build_providers([p for p in config.providers if p.name in args.judge])
-    asyncio.run(run_all(cases, {name: providers[name] for name in args.judge}, args.repeats, args.out))
+    asyncio.run(run_all(cases, {name: providers[name] for name in args.judge}, args.repeats, args.out, max_spend_usd=args.max_spend))
     print()
     print(report(load_results(args.out), args.repeats, load_results(operational_path(args.out))))
     return 0

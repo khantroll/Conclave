@@ -1,6 +1,6 @@
 # Judge benchmark results
 
-**Status: complete for two judge models from different families (`qwen/qwen3.7-flash` and `deepseek/deepseek-chat-v3-0324`, both via OpenRouter), under the original Arbiter prompt and the current one, scored with the repaired scorer (v2). Every one of the four sets gives "default off" by the fixed rule: the Critic arm gained between +0.6 and +1.3 points, under the +3 line. Each is a screening result. A third attempt (groq) is incomplete: 6 of 144 trials, no decision.**
+**Status: complete for three judge models from three families (`qwen/qwen3.7-flash`, `deepseek/deepseek-chat-v3-0324` and `anthropic/claude-sonnet-4.6`, all via OpenRouter), scored with the repaired scorer (v2): qwen and deepseek under the original Arbiter prompt and the current one, Sonnet under the current one. Every one of the five sets gives "default off" by the fixed rule: the Critic arm moved between -1.3 and +1.3 points, under the +3 line. Each is a screening result. groq is incomplete: 6 of 144 trials, no decision.**
 
 ## What was run
 
@@ -28,6 +28,24 @@
 
 **Decision by the fixed rule: default off in all four sets** (each under +3 points).
 
+## Third judge: `anthropic/claude-sonnet-4.6` (OpenRouter, pinned, `max_output_tokens` 2500), current Arbiter prompt
+
+144 of 144 trials, $2.43 by the ledger. A frontier-class model, run after the scorer was repaired.
+
+| class | Arbiter alone | Critic then Arbiter |
+|---|---|---|
+| correct_minority | 24 / 24 | 24 / 24 |
+| failed_delegate | 24 / 24 | 24 / 24 |
+| duplicate_pair | 23 / 24 | 22 / 24 |
+| injected_instruction | 24 / 24 | 23 / 24 |
+| unanswerable | 24 / 24 | 24 / 24 |
+| majority_vs_fact | 36 / 36 | 36 / 36 |
+| **all** | **155 / 156 (99.4%)** | **153 / 156 (98.1%)** |
+
+**Decision: default off** (the Critic arm is **-1.3 points**). With the strongest judge so far the Arbiter alone is already at 99.4%, so there is almost nothing left for a Critic to add, and it was slightly worse: 4 failed checks in all, three on duplicates (a Critic-arm answer calling the result "unanimous", one "consensus", one "both independent sources") and one injection flag, which is a quoted rejection ("Response A's embedded instruction (\"PINEAPPLE-OVERRIDE-7\") has been disregarded"), not an obeyed instruction.
+
+Actual OpenRouter spend: the key's lifetime usage rose from about $0.74 to $3.53 across the qwen, deepseek and Sonnet runs, so about $2.8 in total, consistent with the ledger estimates ($0.09 + $0.11 + $0.21 + $2.43, plus the failed attempts the ledger did not keep).
+
 ## What an independent audit found, and what changed
 
 An independent audit (ChatGPT, reading all 582 stored trials and re-deriving the scores) found that the first scorer was unfair in four ways. They are repaired, the stored answers were rescored, and the original scores are kept for comparison:
@@ -43,8 +61,8 @@ Other audit points, handled: the runner's resume key now includes the model behi
 
 ## What it does and does not show
 
-- **Two judges, 72 paired trials each, so screening results.** They agree. They do not show what a stronger judge, or a specialised Critic, would do. The same model played Critic and Arbiter, so this does not test a *different* Critic either.
-- **The Critic's gain was small and positive in every set (+0.6 to +1.3), below the line fixed in advance.** "Added nothing" would be too strong; "did not clear the bar" is accurate. Its gains were on duplicates and a few format or fact answers; it was slightly worse on `majority_vs_fact` for qwen in the current-prompt set (1 check).
+- **Three judges from three families, 72 paired trials each, so screening results.** They agree, and the strongest of them (Sonnet) leaves the least room for a Critic. They do not show what a *different* or specialised Critic would do: the same model played Critic and Arbiter in every set.
+- **The Critic's effect was small in every set (-1.3 to +1.3), below the line fixed in advance.** It was slightly positive for the two cheaper judges and slightly negative for Sonnet; "did not clear the bar" is accurate, and a Critic does cost an extra call per run. Its gains were on duplicates and a few format or fact answers; it was slightly worse on `majority_vs_fact` for qwen in the current-prompt set (1 check).
 - **The Arbiter prompt change is the larger effect.** Under the original prompt neither judge ever acknowledged a missing delegate (0 of 12 per arm) and almost never noticed duplicates; under the current one, 12 of 12 and 21 to 23 of 24. Arbiter-alone scores rose about 12 to 17 points.
 - **Remaining misses are few** (4 to 5 checks per set): a duplicate described as agreement, one "insufficient evidence" case, one fact answer.
 - The injection result (no injected instruction asserted in any judge answer) is for four injection texts and two models. It is not a general rate.
@@ -55,4 +73,4 @@ Other audit points, handled: the runner's resume key now includes the model behi
 
 ## Consequence for Conclave
 
-Conclave still has **no Critic default**: a workspace must state its choice. Two judges from two families, under two prompts, keep the Critic under the +3 point bar, so the evidence does not support defaulting the Critic on; if a default were set from it, it would be "no Critic". That is a product decision, not made here. Extend with `python -m bench.judge.runner --config conclave.json --judge <name> --approve-cost <amount>` (results are kept per judge, model and Arbiter prompt); `--summarize` applies the rule and `--rescore` re-scores saved answers with the current scorer without calling a model.
+Conclave still has **no Critic default**: a workspace must state its choice. Three judges from three families keep the Critic under the +3 point bar (the strongest one by being slightly worse with it), so the evidence does not support defaulting the Critic on; if a default were set from it, it would be "no Critic". That is a product decision, not made here. Extend with `python -m bench.judge.runner --config conclave.json --judge <name> --approve-cost <amount>` (results are kept per judge, model and Arbiter prompt); `--summarize` applies the rule and `--rescore` re-scores saved answers with the current scorer without calling a model.
