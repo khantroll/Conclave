@@ -179,3 +179,18 @@ def test_the_cost_of_a_completed_critic_is_recorded_when_its_arbiter_fails(tmp_p
     assert entry["arm"] == "critic" and entry["stages"][0][1] == "succeeded"
     assert entry["cost"]["total_calls"] >= 2  # includes the Critic that finished and the Arbiter that failed
     assert entry["cost"]["unpriced_calls"] == entry["cost"]["total_calls"]  # unpriced here, but counted, not lost
+
+
+def test_a_spend_limit_stops_the_run_after_the_trial_that_reaches_it(tmp_path):
+    class Costly(Provider):
+        model = "m"
+
+        async def ask(self, prompt):
+            return ProviderResponse(text=answer(), estimated_cost_usd=1.0)  # every call costs one dollar
+
+    logs = []
+    out = tmp_path / "r.jsonl"
+    new = asyncio.run(runner.run_all(CASES[:3], {"j": Costly()}, 1, out, log=logs.append, max_spend_usd=0.5))
+    assert len(new) == 1 and "max-spend" in logs[-1]  # one trial ran, reached the limit, and it stopped
+    assert len(runner.load_results(out)) == 1  # the trial that reached the limit is kept, nothing more
+    assert asyncio.run(runner.run_all(CASES[:1], {"j": Costly()}, 1, out, log=lambda *_: None)) != []  # resuming works
