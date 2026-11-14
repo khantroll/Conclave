@@ -176,8 +176,20 @@ def group_sources(
             for j in range(i + 1, len(succeeded)):
                 found = near_duplicate(prepared[i], prepared[j])
                 # Text that matches is not a copy if the answers disagree about the answer.
-                if found is not None and not opposing(succeeded[i].raw_response, succeeded[j].raw_response):
-                    union(i, j, NEAR_DUPLICATE_TEXT, found[1])
+                if found is None or find(i) == find(j):
+                    continue
+                # Merging joins every member of both groups, so no member of one may oppose any
+                # member of the other. Otherwise two opposing answers could be merged through a
+                # third that states no conclusion (A ~ C and C ~ B, but A opposes B).
+                side_i = [k for k in range(len(succeeded)) if find(k) == find(i)]
+                side_j = [k for k in range(len(succeeded)) if find(k) == find(j)]
+                if any(
+                    opposing(succeeded[a].raw_response, succeeded[b].raw_response)
+                    for a in side_i
+                    for b in side_j
+                ):
+                    continue
+                union(i, j, NEAR_DUPLICATE_TEXT, found[1])
 
     groups: dict[int, list[int]] = {}
     for i in range(len(succeeded)):
