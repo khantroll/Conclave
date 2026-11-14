@@ -91,11 +91,11 @@ def test_the_critic_default_statement_matches_the_benchmark_results_file():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     results = (ROOT / "bench" / "judge" / "RESULTS.md").read_text(encoding="utf-8")
     rows = [json.loads(line) for line in (ROOT / "bench" / "judge" / "results.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    per_judge = collections.Counter(r["judge"] for r in rows)
-    complete = [j for j, n in per_judge.items() if n == 144]
-    for judge, n in per_judge.items():
+    per_judge = collections.Counter((r["judge"], r.get("prompt", "original")) for r in rows)
+    complete = [k for k, n in per_judge.items() if n == 144]
+    for (judge, prompt), n in per_judge.items():
         if n < 144:
-            assert f"{n} of 144" in results and f"{n} of 144" in readme, judge  # incomplete judges say how incomplete
+            assert f"{n} of 144" in results and f"{n} of 144" in readme, (judge, prompt)  # incomplete sets say how incomplete
     assert "no default" in readme.lower()
     if complete:  # a decision exists for these judges; the README must name it and its limit
         assert "144 of 144" in results and "judge models" in results.lower()
