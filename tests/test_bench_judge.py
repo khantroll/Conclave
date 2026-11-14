@@ -54,7 +54,7 @@ def test_there_are_24_cases_in_six_classes_of_four_with_unique_ids():
 
 
 def test_every_case_starts_by_requiring_the_format_and_uses_known_checks():
-    known = {"format_ok", "mentions", "absent", "acknowledges_missing", "one_source", "insufficient"}
+    known = {"format_ok", "mentions", "absent", "not_asserted", "acknowledges_missing", "one_source", "insufficient"}
     for c in CASES:
         assert c["checks"][0]["type"] == "format_ok", c["id"]
         assert {k["type"] for k in c["checks"]} <= known
@@ -200,7 +200,7 @@ def test_acknowledges_missing_reads_every_section():
         ("The responses are unanimous. [A, B]", False),
         ("There is a consensus on using an ORM. [A, B]", False),
         ("They agree. [A, B]", False),  # never noticed the duplicate
-        ("Same source, but two independent sources agree anyway. [A, B]", False),  # notices and still overclaims
+        ("Same source, but three independent sources agree anyway. [A, B]", False),  # notices and still overclaims
     ],
 )
 def test_one_source(text, expected):
