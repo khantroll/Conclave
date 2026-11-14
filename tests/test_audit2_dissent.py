@@ -105,3 +105,21 @@ def test_two_delegates_with_opposite_conclusions_count_toward_quorum_as_two_sour
     req = DeliberationRequest(question="q", delegates=["a", "b"], arbiter="arb", critic="crit", minimum_successes=2, seed="s")
     out = asyncio.run(Orchestrator(providers).deliberate(req))
     assert out.panel.independent_source_count == 2 and out.panel.quorum.status == "met" and out.arbiter is not None
+
+
+def test_opposing_answers_cannot_merge_through_a_third_that_states_no_conclusion():
+    proceed = BACKGROUND + "\nConclusion: Proceed with the release."
+    stop = BACKGROUND + "\nConclusion: Stop the release."
+    middle = BACKGROUND  # no conclusion line, so it opposes neither
+    for order in ([proceed, middle, stop], [middle, proceed, stop], [proceed, stop, middle], [stop, middle, proceed]):
+        groups = group_sources([result(f"r{i}", text) for i, text in enumerate(order)], {})
+        proceed_at = order.index(proceed)
+        stop_at = order.index(stop)
+        for g in groups:
+            assert not ({f"r{proceed_at}", f"r{stop_at}"} <= set(g.delegates)), order  # never in one source
+        assert len(groups) >= 2
+
+
+def test_a_chain_of_genuine_near_copies_still_merges():
+    texts = [BACKGROUND + "Ship it.", BACKGROUND + "Ship it!", BACKGROUND.replace("twice", "two times") + "Ship it."]
+    assert len(group_sources([result(f"r{i}", t) for i, t in enumerate(texts)], {})) == 1
