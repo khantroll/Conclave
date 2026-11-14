@@ -551,3 +551,19 @@ def test_explicit_language_about_an_absent_delegate_is_acknowledgement(text):
 )
 def test_a_negated_claim_of_independence_is_not_a_claim(text, expected):
     assert passed(case("one_source"), answer(common=f"- {text} [A, B]"))["one_source"] is expected
+
+
+def test_results_are_kept_apart_by_the_arbiter_prompt_they_were_produced_under(tmp_path):
+    out = tmp_path / "r.jsonl"
+    old = {"judge": "j", "case": CASES[0]["id"], "arm": "arbiter", "repeat": 0, "class": CASES[0]["class"],
+           "results": [{"name": "format_ok", "passed": True}]}  # recorded before prompts were versioned
+    out.write_text(json.dumps(old) + "\n", encoding="utf-8")
+    assert runner.prompt_of(old) == runner.ORIGINAL_PROMPT != runner.PROMPT_VERSION
+    judge = Counting(answer())
+    new = asyncio.run(runner.run_all(CASES[:1], {"j": judge}, 1, out, log=lambda *_: None))
+    assert len(new) == 2  # the old trial does not count as done under the new prompt
+    assert {runner.prompt_of(t) for t in runner.load_results(out)} == {runner.ORIGINAL_PROMPT, runner.PROMPT_VERSION}
+    text = runner.report(runner.load_results(out), 1)
+    assert "Arbiter prompt `original`" in text and f"Arbiter prompt `{runner.PROMPT_VERSION}`" in text
+    again = asyncio.run(runner.run_all(CASES[:1], {"j": judge}, 1, out, log=lambda *_: None))
+    assert again == []  # resuming under the same prompt still pays for nothing twice
