@@ -25,7 +25,7 @@ A merged PR is not counted as proof: each row names a test that would fail witho
 
 ## Judge benchmark
 
-**Complete on two judges.** `qwen/qwen3.7-flash` (144 of 144 trials, about $0.09): Arbiter alone 120/144, Critic then Arbiter 118/144, -1.4 points. `deepseek/deepseek-chat-v3-0324` (144 of 144, about $0.11): 116/144 and 117/144, +0.7 points. Both "default off" by the fixed rule, as small-model screening results. Both judges, in both arms, scored 0 of 12 on acknowledging a missing delegate and almost never noticed duplicate sources: a finding about the Arbiter's prompt. After the prompt change (PR #36, re-run on both judges for about $0.21) the missing-delegate class is 12 of 12 and the Arbiter-alone score about 95%, and the Critic is still "default off" (+2.1 qwen, +0.0 deepseek). groq (free tier): 6 of 144, incomplete, no decision. Outages are in `bench/judge/operational.jsonl`, apart from the scores. Details: `bench/judge/RESULTS.md`. There is still no Critic default.
+**Complete on two judges, under two Arbiter prompts each, with the repaired scorer (v2).** `qwen/qwen3.7-flash` and `deepseek/deepseek-chat-v3-0324` (144 of 144 trials per set, about $0.41 in all): the Critic arm gained +0.6 to +1.3 points, all "default off" by the fixed rule. Screening results on inexpensive models; the first scorer was unfair in four ways (found by an independent audit) and was repaired and every trial rescored, original scores kept. Both judges, in both arms, scored 0 of 12 on acknowledging a missing delegate and almost never noticed duplicate sources: a finding about the Arbiter's prompt. After the prompt change (PR #36, re-run on both judges for about $0.21) the missing-delegate class is 12 of 12 and the Arbiter-alone score about 98%, and the Critic is still "default off" (+1.3 qwen, +0.6 deepseek). groq (free tier): 6 of 144, incomplete, no decision. Outages are in `bench/judge/operational.jsonl`, apart from the scores. Details: `bench/judge/RESULTS.md`. There is still no Critic default.
 
 ## Acceptance (real providers, free keys, a copy of the real database)
 
@@ -41,7 +41,7 @@ Three kinds of cost, never mixed:
 | Area | State |
 |---|---|
 | P0, P1-1 to P1-12, P1-14 | Implemented and merged; covered by the suite and the mock benchmark. |
-| P1-13 Critic default | Interim explicit-choice rule implemented; benchmark run to completion on two small judges (both "default off"); a stronger judge and the prompt change are still to do. **Partial.** |
+| P1-13 Critic default | Interim explicit-choice rule implemented; benchmark run to completion on two inexpensive judges (all sets "default off"); a stronger judge and the prompt change are still to do. **Partial.** |
 | P1-15 real-provider acceptance | Partly passed (above). Billing reconciliation **blocked** on provider dashboards. |
 | Panel versus one model | Not measured. **Deferred** (P2-1). |
 | Spending ceiling, shared stage deadline, run-progress polling, router evaluation | **Deferred** (P2). |

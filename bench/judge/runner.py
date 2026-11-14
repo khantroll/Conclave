@@ -177,7 +177,15 @@ def describe(plan: dict) -> str:
 
 class JudgeUnavailable(RuntimeError):
     """The judge call itself failed (rate limit, outage). That says nothing about the judge's
-    judgment, so it is never recorded as a failed trial; the run stops and can be resumed."""
+    judgment, so it is never recorded as a failed trial; the run stops and can be resumed.
+
+    ``cost`` is what the attempt already spent (a Critic that finished before its Arbiter failed
+    was paid for), so it is recorded as an operational outcome rather than lost."""
+
+    def __init__(self, message: str, cost: dict | None = None, stages: list | None = None) -> None:
+        super().__init__(message)
+        self.cost = cost
+        self.stages = stages or []
 
 
 async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repeat: int) -> dict:
@@ -190,7 +198,11 @@ async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repe
     stages = [s for s in (result.critic if arm.use_critic else None, result.arbiter) if s is not None or False]
     if result.arbiter is None or any(s.status.value != "succeeded" for s in stages):
         failed = next((s for s in stages if s.status.value != "succeeded"), None)
-        raise JudgeUnavailable(f"{judge_name}: {failed.error_kind or failed.status.value if failed else 'no answer'}")
+        raise JudgeUnavailable(
+            f"{judge_name}: {failed.error_kind or failed.status.value if failed else 'no answer'}",
+            cost=result.cost.model_dump() if result.cost else None,
+            stages=[(s.name, s.status.value) for s in (result.critic, result.arbiter) if s is not None],
+        )
     arbiter_text = result.arbiter.raw_response
     checks = scoring.score_trial(case, arbiter_text, set(result.label_map))
     return {
@@ -199,7 +211,11 @@ async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repe
         "arm": arm.name,
         "repeat": repeat,
         "judge": judge_name,
+        # The model behind the provider name when this ran: a provider can be re-pointed at
+        # another model, and results from the old one must not be reused as the new one's.
+        "model": getattr(judge, "model", None) or "unknown",
         "prompt": PROMPT_VERSION,
+        "scorer": scoring.SCORER_VERSION,
         "seed": seed,
         "arbiter": arbiter_text,
         "critic": result.critic.raw_response if result.critic else None,
@@ -213,10 +229,17 @@ def operational_path(out: Path) -> Path:
     return out.with_name("operational.jsonl")
 
 
-def record_operational(out: Path, judge: str, case: str, arm: str, repeat: int, reason: str) -> None:
+def record_operational(
+    out: Path, judge: str, case: str, arm: str, repeat: int, reason: str,
+    cost: dict | None = None, stages: list | None = None,
+) -> None:
     """Note that a trial could not run (quota, outage). Never scored, never part of a decision."""
     entry = {"at": datetime.now(timezone.utc).isoformat(), "judge": judge, "case": case,
              "arm": arm, "repeat": repeat, "reason": reason}
+    if cost is not None:
+        entry["cost"] = cost  # spent on the attempt even though it produced no scored trial
+    if stages:
+        entry["stages"] = stages
     with operational_path(out).open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(entry) + "\n")
 
@@ -232,19 +255,23 @@ async def run_all(
 ) -> list[dict]:
     """Run every missing trial, appending each to ``out`` as it finishes (so an interrupted run
     resumes where it stopped and nothing already paid for is run again)."""
-    done = {(t["case"], t["arm"], t["repeat"], t["judge"]) for t in load_results(out) if prompt_of(t) == PROMPT_VERSION}
+    done = {
+        (t["case"], t["arm"], t["repeat"], t["judge"], t.get("model", "unknown"))
+        for t in load_results(out)
+        if prompt_of(t) == PROMPT_VERSION
+    }
     new: list[dict] = []
     for judge_name, judge in judges.items():
         for case in cases:
             for repeat in range(repeats):
                 for arm in ARM_LIST:
-                    if (case["id"], arm.name, repeat, judge_name) in done:
+                    if (case["id"], arm.name, repeat, judge_name, getattr(judge, "model", None) or "unknown") in done:
                         continue
                     try:
                         trial = await run_trial(case, arm, judge_name, judge, repeat)
                     except JudgeUnavailable as exc:
                         # An operational outcome (quota, outage): kept apart from the scored trials.
-                        record_operational(out, judge_name, case["id"], arm.name, repeat, str(exc))
+                        record_operational(out, judge_name, case["id"], arm.name, repeat, str(exc), exc.cost, exc.stages)
                         log(f"stopped, not recorded: {exc}. Run again later to resume.")
                         return new
                     with out.open("a", encoding="utf-8", newline="\n") as handle:
@@ -304,8 +331,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--approve-cost", type=float, default=None, help="the most you approve spending, in USD")
     parser.add_argument("--approve-unpriced", action="store_true", help="also approve a run whose cost cannot be estimated (no price configured)")
     parser.add_argument("--summarize", action="store_true", help="summarize --out and stop")
+    parser.add_argument("--rescore", action="store_true", help="score the saved answers in --out again with the current scorer (no model is called) and stop")
     args = parser.parse_args(argv)
 
+    if args.rescore:
+        rows = scoring.rescore(load_results(args.out))
+        args.out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8", newline="\n")
+        print(f"rescored {len(rows)} trials with scorer v{scoring.SCORER_VERSION}")
+        return 0
     if args.summarize:
         print(report(load_results(args.out), args.repeats, load_results(operational_path(args.out))))
         return 0

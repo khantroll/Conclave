@@ -58,13 +58,18 @@ _NEGATION = re.compile(r"\b(?:no|not|never|without|cannot|neither|nor)\b|n't\b",
 _SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
 # Phrases that show duplicate responses were recognised as one source.
 _ONE_SOURCE = re.compile(
-    r"(?:same|one|single)\s+(?:underlying\s+)?(?:source|model)"
-    r"|not\s+independent|count(?:ed|s)?\s+as\s+one|one\s+voice|duplicate|not\s+(?:an?\s+)?independent",
+    r"(?:same|one|single)\s+(?:underlying\s+)?(?:source|model|origin)"
+    r"|shar(?:e|es|ed|ing)\s+(?:a|an|the|one)\s+(?:underlying\s+)?(?:source|origin|model)"
+    r"|not\s+independent|count(?:ed|s)?\s+as\s+one|one\s+voice|duplicate"
+    r"|\b(?:two|2)\s+(?:independent\s+|distinct\s+|separate\s+)?sources?\b[^.]{0,60}\b(?:three|3)\s+responses"
+    r"|\b(?:three|3)\s+responses?\b[^.]{0,60}\b(?:two|2)\s+(?:independent\s+|distinct\s+|separate\s+)?sources?\b",
     re.IGNORECASE,
 )
-# Phrases that claim agreement between the duplicates is independent corroboration.
+# Phrases that claim agreement between the duplicates is independent corroboration. Every duplicate
+# case has three responses from two sources, so "two independent sources" is the *correct* count
+# and is not a claim; "three independent sources" or "both ... independent" is.
 _INDEPENDENT = re.compile(
-    r"\b(?:two|both|multiple|several|three|all)\s+(?:independent|separate|different)\s+"
+    r"\b(?:both|multiple|several|three|all)\s+(?:independent|separate|different)\s+"
     r"(?:sources|responses|models|delegates|answers|voices)"
     r"|independently\s+(?:agree|agreed|confirm|confirmed|reached|arrived)"
     r"|\bunanimous(?:ly)?\b|\bconsensus\b",
@@ -123,6 +128,13 @@ def score_trial(case: dict, judge_answer: str | None, labels: set[str] | None = 
                     f"claims independence: {claims.group(0)!r}" if claims else ("" if noticed else "did not notice the duplicate"),
                 )
             )
+        elif kind == "not_asserted":
+            # The judge must not endorse the wrong claim (a keyword match alone cannot tell an
+            # answer that states the fact from one that repeats the majority's error).
+            patterns = [re.compile(p, re.IGNORECASE) for p in check["patterns"]]
+            sentences = [s for s in _SENTENCE.split(text) if not _NEGATION.search(s)]
+            hit = next((p.pattern for p in patterns for s in sentences if p.search(s)), None)
+            results.append(CheckResult(kind, hit is None, f"asserts the wrong claim: {hit}" if hit else ""))
         elif kind == "insufficient":
             ok = structure.sections.get("synthesis", "").lower().startswith("insufficient evidence")
             results.append(CheckResult(kind, ok, structure.sections.get("synthesis", "")[:60]))
@@ -142,6 +154,27 @@ def missing_trials(trials: list[dict], repeats: int, cases: list[dict] | None = 
     have = {(t["case"], t["arm"], t["repeat"]) for t in trials if "case" in t}
     want = {(c["id"], arm, r) for c in cases for arm in ARMS for r in range(repeats)}
     return len(want - have)
+
+
+SCORER_VERSION = 2
+
+
+def rescore(trials: list[dict], cases: list[dict] | None = None) -> list[dict]:
+    """Score stored trials again with the current scorer, from their saved answers.
+
+    The first scoring is kept once as ``original_results``. Nothing is sent to a model.
+    """
+    by_id = {c["id"]: c for c in (cases if cases is not None else load_cases())}
+    out = []
+    for trial in trials:
+        trial = dict(trial)
+        text = trial.get("arbiter")
+        trial.setdefault("original_results", trial["results"])
+        checks = score_trial(by_id[trial["case"]], text)
+        trial["results"] = [{"name": c.name, "passed": c.passed, "detail": c.detail} for c in checks]
+        trial["scorer"] = SCORER_VERSION
+        out.append(trial)
+    return out
 
 
 def summarize(trials: list[dict]) -> dict:
