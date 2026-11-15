@@ -43,6 +43,6 @@ Three kinds of cost, never mixed:
 | P0, P1-1 to P1-12, P1-14 | Implemented and merged; covered by the suite and the mock benchmark. |
 | P1-13 Critic default | Interim explicit-choice rule implemented; benchmark run to completion on three judges (all sets "default off"); a stronger judge and the prompt change are still to do. **Partial.** |
 | P1-15 real-provider acceptance | Partly passed (above). Billing reconciliation **blocked** on provider dashboards. |
-| Panel versus one model | Not measured. **Deferred** (P2-1). |
+| Panel versus one model | Not measured. A 10-question screening (Fable vs a four-source panel, 2026-11-15, `bench/panel/RESULTS.md`) hit the ceiling and did not discriminate: no decision. **Deferred** (P2-1). |
 | Spending ceiling, shared stage deadline, run-progress polling, router evaluation | **Deferred** (P2). |
 | Release readiness | **Not complete**: missing the benchmark, billing reconciliation and the panel-versus-one measurement. |
