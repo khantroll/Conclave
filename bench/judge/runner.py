@@ -90,12 +90,14 @@ def scripted_panel(case: dict) -> tuple[dict[str, Provider], dict[str, ProviderI
     return providers, identities, [d["name"] for d in case["delegates"]]
 
 
-def build_request(case: dict, names: list[str], arm: Arm, judge: str, seed: str) -> DeliberationRequest:
+def build_request(
+    case: dict, names: list[str], arm: Arm, judge: str, seed: str, critic: str | None = None
+) -> DeliberationRequest:
     return DeliberationRequest(
         question=case["question"],
         delegates=names,
         arbiter=judge,
-        critic=judge if arm.use_critic else None,
+        critic=(critic or judge) if arm.use_critic else None,
         minimum_successes=2,
         seed=seed,
         timeout_seconds=30,
@@ -123,7 +125,7 @@ def stub_answer() -> str:
 # ------------------------------------------------------------------------------ estimate
 
 
-def estimate(cases: list[dict], judges: list[str], config: ConclaveConfig, repeats: int) -> dict:
+def estimate(cases: list[dict], judges: list[str], config: ConclaveConfig, repeats: int, critic: str | None = None) -> dict:
     """Calls, tokens and cost for the whole run, from the prompts it would send and the prices
     in the configuration. Unpriced judges make the cost unknown rather than zero."""
     prices = {p.name: p for p in config.providers}
@@ -141,16 +143,26 @@ def estimate(cases: list[dict], judges: list[str], config: ConclaveConfig, repea
     per_judge = []
     for judge in judges:
         cfg = prices.get(judge)
+        in_price = cfg.input_cost_per_million if cfg is not None else None
+        out_price = cfg.output_cost_per_million if cfg is not None else None
+        if critic is not None:
+            # Both roles are priced at the dearer of the two models, input and output separately,
+            # so the estimate is an upper bound. A Critic with no price makes the cost unknown.
+            other = prices.get(critic)
+            if other is None or None in (in_price, out_price, other.input_cost_per_million, other.output_cost_per_million):
+                in_price = out_price = None
+            else:
+                in_price = max(in_price, other.input_cost_per_million)
+                out_price = max(out_price, other.output_cost_per_million)
         calls = repeats * sum(calls_per_pass.values())
         tokens_in = repeats * sum(prompts_per_arm.values()) // CHARS_PER_TOKEN
         tokens_out = calls * ASSUMED_OUTPUT_TOKENS
-        priced = cfg is not None and cfg.input_cost_per_million is not None and cfg.output_cost_per_million is not None
         cost = (
-            tokens_in / 1e6 * cfg.input_cost_per_million + tokens_out / 1e6 * cfg.output_cost_per_million
-            if priced
+            tokens_in / 1e6 * in_price + tokens_out / 1e6 * out_price
+            if in_price is not None and out_price is not None
             else None
         )
-        per_judge.append({"judge": judge, "calls": calls, "tokens_in": tokens_in, "tokens_out": tokens_out, "cost_usd": cost})
+        per_judge.append({"judge": pair_label(judge, critic), "calls": calls, "tokens_in": tokens_in, "tokens_out": tokens_out, "cost_usd": cost})
     known = all(j["cost_usd"] is not None for j in per_judge)
     return {
         "cases": len(cases),
@@ -188,18 +200,35 @@ class JudgeUnavailable(RuntimeError):
         self.stages = stages or []
 
 
-async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repeat: int) -> dict:
+def pair_label(judge_name: str, critic_name: str | None) -> str:
+    """The name results are filed under: the Arbiter alone, or "arbiter+critic" when the Critic is
+    a different model, so the two setups never share a baseline or a resume key."""
+    return f"{judge_name}+{critic_name}" if critic_name else judge_name
+
+
+async def run_trial(
+    case: dict, arm: Arm, judge_name: str, judge: Provider, repeat: int,
+    critic: tuple[str, Provider] | None = None,
+) -> dict:
     providers, identities, names = scripted_panel(case)
     providers[judge_name] = judge
+    critic_name = None
+    if critic is not None:
+        critic_name = critic[0]
+        same_model = getattr(judge, "model", None) and getattr(judge, "model", None) == getattr(critic[1], "model", None)
+        if critic_name == judge_name or same_model:
+            raise ValueError("the Critic must be a different provider and model from the Arbiter; omit --critic to use one model for both")
+        providers[critic_name] = critic[1]
     seed = seed_for(case["id"], repeat)
     rows: list = []
     orchestrator = Orchestrator(providers, identities, ledger_sink=rows.append)
-    result = await orchestrator.deliberate(build_request(case, names, arm, judge_name, seed))
+    result = await orchestrator.deliberate(build_request(case, names, arm, judge_name, seed, critic_name))
     stages = [s for s in (result.critic if arm.use_critic else None, result.arbiter) if s is not None or False]
     if result.arbiter is None or any(s.status.value != "succeeded" for s in stages):
         failed = next((s for s in stages if s.status.value != "succeeded"), None)
+        failed_provider = failed.name if failed is not None else judge_name  # the stage records its own provider
         raise JudgeUnavailable(
-            f"{judge_name}: {failed.error_kind or failed.status.value if failed else 'no answer'}",
+            f"{failed_provider}: {failed.error_kind or failed.status.value if failed else 'no answer'}",
             cost=result.cost.model_dump() if result.cost else None,
             stages=[(s.name, s.status.value) for s in (result.critic, result.arbiter) if s is not None],
         )
@@ -210,10 +239,10 @@ async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repe
         "class": case["class"],
         "arm": arm.name,
         "repeat": repeat,
-        "judge": judge_name,
+        "judge": pair_label(judge_name, critic_name),
         # The model behind the provider name when this ran: a provider can be re-pointed at
         # another model, and results from the old one must not be reused as the new one's.
-        "model": getattr(judge, "model", None) or "unknown",
+        "model": pair_model(judge, critic),
         "prompt": PROMPT_VERSION,
         "scorer": scoring.SCORER_VERSION,
         "seed": seed,
@@ -223,6 +252,11 @@ async def run_trial(case: dict, arm: Arm, judge_name: str, judge: Provider, repe
         "results": [{"name": c.name, "passed": c.passed, "detail": c.detail} for c in checks],
         "cost": result.cost.model_dump() if result.cost else None,
     }
+
+
+def pair_model(judge: Provider, critic: tuple[str, Provider] | None) -> str:
+    model = getattr(judge, "model", None) or "unknown"
+    return f"{model}+{getattr(critic[1], 'model', None) or 'unknown'}" if critic else model
 
 
 def operational_path(out: Path) -> Path:
@@ -252,7 +286,7 @@ def load_results(path: Path) -> list[dict]:
 
 async def run_all(
     cases: list[dict], judges: dict[str, Provider], repeats: int, out: Path, *, log=print,
-    max_spend_usd: float | None = None,
+    max_spend_usd: float | None = None, critic: tuple[str, Provider] | None = None,
 ) -> list[dict]:
     """Run every missing trial, appending each to ``out`` as it finishes (so an interrupted run
     resumes where it stopped and nothing already paid for is run again)."""
@@ -264,16 +298,17 @@ async def run_all(
     new: list[dict] = []
     spent = 0.0
     for judge_name, judge in judges.items():
+        label = pair_label(judge_name, critic[0] if critic else None)
         for case in cases:
             for repeat in range(repeats):
                 for arm in ARM_LIST:
-                    if (case["id"], arm.name, repeat, judge_name, getattr(judge, "model", None) or "unknown") in done:
+                    if (case["id"], arm.name, repeat, label, pair_model(judge, critic)) in done:
                         continue
                     try:
-                        trial = await run_trial(case, arm, judge_name, judge, repeat)
+                        trial = await run_trial(case, arm, judge_name, judge, repeat, critic)
                     except JudgeUnavailable as exc:
                         # An operational outcome (quota, outage): kept apart from the scored trials.
-                        record_operational(out, judge_name, case["id"], arm.name, repeat, str(exc), exc.cost, exc.stages)
+                        record_operational(out, label, case["id"], arm.name, repeat, str(exc), exc.cost, exc.stages)
                         log(f"stopped, not recorded: {exc}. Run again later to resume.")
                         return new
                     with out.open("a", encoding="utf-8", newline="\n") as handle:
@@ -283,7 +318,7 @@ async def run_all(
                     if max_spend_usd is not None and spent >= max_spend_usd:
                         log(f"stopped: this run has spent about ${spent:.2f}, at the --max-spend limit of ${max_spend_usd:.2f}. Run again to resume.")
                         return new
-                    log(f"{judge_name} {case['id']} {arm.name} #{repeat}: {sum(r['passed'] for r in trial['results'])}/{len(trial['results'])}")
+                    log(f"{label} {case['id']} {arm.name} #{repeat}: {sum(r['passed'] for r in trial['results'])}/{len(trial['results'])}")
     return new
 
 
@@ -331,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="bench.judge.runner", description=__doc__.split("\n")[0])
     parser.add_argument("--config", default="conclave.json")
     parser.add_argument("--judge", action="append", default=[], help="a configured provider to use as the judge (up to two)")
+    parser.add_argument("--critic", default=None, help="a configured provider to use as the Critic, different from the single --judge (default: the judge plays both roles)")
     parser.add_argument("--repeats", type=int, default=DEFAULT_REPEATS)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--dry-run", action="store_true", help="print the estimate and stop; no model is called")
@@ -349,18 +385,31 @@ def main(argv: list[str] | None = None) -> int:
     if args.summarize:
         print(report(load_results(args.out), args.repeats, load_results(operational_path(args.out))))
         return 0
+    if args.critic and len(args.judge) != 1:
+        parser.error("--critic needs exactly one --judge (the Arbiter)")
+    if args.critic is not None and not args.critic:
+        parser.error("--critic needs a provider name")
+    if args.critic and args.critic == args.judge[0]:
+        parser.error("--critic must differ from the --judge; omit it to use one model for both roles")
     if not args.judge or len(args.judge) > MAX_JUDGES:
         parser.error(f"name one or two judge providers with --judge (up to {MAX_JUDGES})")
     if len(set(args.judge)) != len(args.judge):
         parser.error("name each judge once: a repeated --judge would be paid for twice and run once")
     config = load_config(args.config, load_env=True)
     known = {p.name for p in config.providers}
-    missing = [j for j in args.judge if j not in known]
+    missing = [j for j in [*args.judge, *([args.critic] if args.critic else [])] if j not in known]
     if missing:
         parser.error(f"not in {args.config}: {', '.join(missing)}")
 
+    if args.critic:
+        priced = {p.name: p for p in config.providers}
+        if priced[args.critic].model == priced[args.judge[0]].model:
+            parser.error(f"--critic {args.critic} and --judge {args.judge[0]} use the same model ({priced[args.critic].model}); pick a different model or omit --critic")
+        for role in (args.judge[0], args.critic):
+            if priced[role].input_cost_per_million is None or priced[role].output_cost_per_million is None:
+                parser.error(f"{role} has no price configured; with --critic both roles need prices (0 for a free tier) so the estimate and --max-spend cover both")
     cases = scoring.load_cases()
-    plan = estimate(cases, args.judge, config, args.repeats)
+    plan = estimate(cases, args.judge, config, args.repeats, args.critic)
     print(describe(plan))
     if args.dry_run:
         return 0
@@ -376,8 +425,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nNot run: the estimate for the priced judges is ${priced_total:.4f} and --approve-cost "
               f"{'was not given' if args.approve_cost is None else f'is only {args.approve_cost}'}.", file=sys.stderr)
         return 2
-    providers = build_providers([p for p in config.providers if p.name in args.judge])
-    asyncio.run(run_all(cases, {name: providers[name] for name in args.judge}, args.repeats, args.out, max_spend_usd=args.max_spend))
+    wanted = {*args.judge, *([args.critic] if args.critic else [])}
+    providers = build_providers([p for p in config.providers if p.name in wanted])
+    critic = (args.critic, providers[args.critic]) if args.critic else None
+    asyncio.run(run_all(cases, {name: providers[name] for name in args.judge}, args.repeats, args.out, max_spend_usd=args.max_spend, critic=critic))
     print()
     print(report(load_results(args.out), args.repeats, load_results(operational_path(args.out))))
     return 0

@@ -1,6 +1,6 @@
 # Judge benchmark results
 
-**Status: complete for three judge models from three families (`qwen/qwen3.7-flash`, `deepseek/deepseek-chat-v3-0324` and `anthropic/claude-sonnet-4.6`, all via OpenRouter), scored with the repaired scorer (v2): qwen and deepseek under the original Arbiter prompt and the current one, Sonnet under the current one. Every one of the five sets gives "default off" by the fixed rule: the Critic arm moved between -1.3 and +1.3 points, under the +3 line. Each is a screening result. groq is incomplete: 6 of 144 trials, no decision.**
+**Status: complete for three judge models from three families (`qwen/qwen3.7-flash`, `deepseek/deepseek-chat-v3-0324` and `anthropic/claude-sonnet-4.6`, all via OpenRouter), scored with the repaired scorer (v2): qwen and deepseek under the original Arbiter prompt and the current one, Sonnet under the current one. Every one of the five sets gives "default off" by the fixed rule: the Critic arm moved between -1.3 and +1.3 points, under the +3 line. A sixth set, with a *different* model as Critic (see below), also gives "default off" (-1.9 points). Each is a screening result. groq is incomplete: 6 of 144 trials, no decision.**
 
 ## What was run
 
@@ -61,11 +61,27 @@ Other audit points, handled: the runner's resume key now includes the model behi
 
 ## What it does and does not show
 
-- **Three judges from three families, 72 paired trials each, so screening results.** They agree, and the strongest of them (Sonnet) leaves the least room for a Critic. They do not show what a *different* or specialised Critic would do: the same model played Critic and Arbiter in every set.
+- **Three judges from three families, 72 paired trials each, so screening results.** They agree, and the strongest of them (Sonnet) leaves the least room for a Critic. In those five sets the same model played Critic and Arbiter. One different-Critic set is below; a specialised or much stronger Critic is untested.
 - **The Critic's effect was small in every set (-1.3 to +1.3), below the line fixed in advance.** It was slightly positive for the two cheaper judges and slightly negative for Sonnet; "did not clear the bar" is accurate, and a Critic does cost an extra call per run. Its gains were on duplicates and a few format or fact answers; it was slightly worse on `majority_vs_fact` for qwen in the current-prompt set (1 check).
 - **The Arbiter prompt change is the larger effect.** Under the original prompt neither judge ever acknowledged a missing delegate (0 of 12 per arm) and almost never noticed duplicates; under the current one, 12 of 12 and 21 to 23 of 24. Arbiter-alone scores rose about 12 to 17 points.
 - **Remaining misses are few** (4 to 5 checks per set): a duplicate described as agreement, one "insufficient evidence" case, one fact answer.
 - The injection result (no injected instruction asserted in any judge answer) is for four injection texts and two models. It is not a general rate.
+
+## A different model as Critic (2026-11-15)
+
+`qwen/qwen3.7-flash` as Arbiter (current prompt `f1b50981`) and `mistralai/mistral-nemo` (a different family, `$0.029` in / `$0.03` out per million tokens, `max_output_tokens` 4000) as Critic, both via OpenRouter, run with the new `--critic` option (`--max-spend 0.25`). Results are filed under the label `qwen-flash+nemo`; the Arbiter-alone arm was run again under that label so the two arms are paired.
+
+| | Arbiter alone | Critic (nemo), then Arbiter (qwen) |
+|---|---|---|
+| Checks passed | 153/156 (98.1%) | 150/156 (96.2%) |
+| correct_minority | 24/24 | 24/24 |
+| failed_delegate | 24/24 | 24/24 |
+| duplicate_pair | 22/24 | 19/24 |
+| injected_instruction | 24/24 | 24/24 |
+| unanswerable | 23/24 | 23/24 |
+| majority_vs_fact | 36/36 | 36/36 |
+
+Decision by the fixed rule: **default off** (the Critic arm is -1.9 points, under +3; it was also 3 checks worse on duplicate_pair, 19/24 against 22/24; the per-class limit matters only for a default-on decision). 144 of 144 trials, 72 paired; a screening result. Cost by the ledger: about $0.07 (one provider, OpenRouter; billing not checked against OpenRouter's page by this session; the owner reported billing as fine). No operational failures in this set. A different, cheap Critic did not help: the six sets together give no sign that the Critic stage earns its extra call.
 
 ## Operational outcomes (never scored)
 

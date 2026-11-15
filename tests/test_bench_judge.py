@@ -567,3 +567,67 @@ def test_results_are_kept_apart_by_the_arbiter_prompt_they_were_produced_under(t
     assert "Arbiter prompt `original`" in text and f"Arbiter prompt `{runner.PROMPT_VERSION}`" in text
     again = asyncio.run(runner.run_all(CASES[:1], {"j": judge}, 1, out, log=lambda *_: None))
     assert again == []  # resuming under the same prompt still pays for nothing twice
+
+
+def test_a_separate_critic_is_a_different_model_and_is_filed_under_its_own_label(tmp_path):
+    arbiter = Counting(answer(common="- Fine. [A]"))
+    critic = Counting("## Findings\n- a critic note")
+    out = tmp_path / "r.jsonl"
+    new = asyncio.run(runner.run_all(CASES[:1], {"j": arbiter}, 1, out, log=lambda *_: None, critic=("c", critic)))
+    assert len(new) == 2 and {t["judge"] for t in new} == {"j+c"}
+    by_arm = {t["arm"]: t for t in new}
+    assert by_arm["arbiter"]["critic"] is None and by_arm["critic"]["critic"] is not None
+    assert critic.calls == 1  # only the Critic arm calls the Critic, once
+    assert arbiter.calls == 2  # the Arbiter answers in both arms
+    # Resumes under the same label, and never mixes with a single-model run of the same Arbiter.
+    assert asyncio.run(runner.run_all(CASES[:1], {"j": arbiter}, 1, out, log=lambda *_: None, critic=("c", critic))) == []
+    single = asyncio.run(runner.run_all(CASES[:1], {"j": arbiter}, 1, out, log=lambda *_: None))
+    assert len(single) == 2 and {t["judge"] for t in single} == {"j"}
+
+
+def test_the_critic_must_differ_from_the_arbiter_and_the_estimate_uses_the_dearer_price(tmp_path):
+    with pytest.raises(ValueError):
+        asyncio.run(runner.run_trial(CASES[0], runner.ARM_LIST[1], "j", Counting("x"), 0, ("j", Counting("x"))))
+    with pytest.raises(SystemExit):
+        runner.main(["--config", str(write_config(tmp_path)), "--judge", "j", "--critic", "j", "--dry-run"])
+    plain = runner.estimate(CASES, ["j"], config(), 3)
+    both = runner.estimate(CASES, ["j"], config(), 3, critic="j")
+    assert both["cost_usd"] == plain["cost_usd"]  # same price on both sides
+    assert runner.estimate(CASES, ["j"], config(None, None), 3, critic="j")["cost_usd"] is None
+
+
+def test_the_estimate_prices_input_and_output_at_the_dearer_of_two_models(tmp_path):
+    cfg = ConclaveConfig(providers=[
+        ProviderConfig(name="a", base_url="http://x/v1", model="m", input_cost_per_million=10.0, output_cost_per_million=1.0),
+        ProviderConfig(name="b", base_url="http://x/v1", model="m", input_cost_per_million=1.0, output_cost_per_million=10.0),
+    ])
+    solo_a = runner.estimate(CASES, ["a"], cfg, 1)["cost_usd"]
+    solo_b = runner.estimate(CASES, ["b"], cfg, 1)["cost_usd"]
+    pair = runner.estimate(CASES, ["a"], cfg, 1, critic="b")
+    assert pair["cost_usd"] > max(solo_a, solo_b) and pair["per_judge"][0]["judge"] == "a+b"
+
+
+def test_a_failed_critic_is_reported_under_the_critic_provider(tmp_path):
+    class Down(Provider):
+        async def ask(self, prompt):
+            raise RuntimeError("down")
+
+    with pytest.raises(runner.JudgeUnavailable) as err:
+        asyncio.run(runner.run_trial(CASES[0], runner.ARM_LIST[1], "j", Counting(answer()), 0, ("c", Down())))
+    assert str(err.value).startswith("c:")
+
+
+def test_two_provider_names_on_one_model_are_not_a_different_critic(tmp_path):
+    class Named(Counting):
+        def __init__(self, model):
+            super().__init__(answer())
+            self.model = model
+
+    with pytest.raises(ValueError):
+        asyncio.run(runner.run_trial(CASES[0], runner.ARM_LIST[1], "a", Named("m"), 0, ("b", Named("m"))))
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps({"providers": [
+        {"name": n, "base_url": "http://x/v1", "model": "same", "input_cost_per_million": 0.0, "output_cost_per_million": 0.0}
+        for n in ("a", "b")]}), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        runner.main(["--config", str(path), "--judge", "a", "--critic", "b", "--dry-run"])

@@ -23,13 +23,13 @@ Command: `python -m pytest -q --basetemp=<writable dir> -p no:cacheprovider`
 ## Remaining work (from `docs/DEVELOPMENT_NEXT_STEPS.md`, not started, all need your approval)
 
 1. Real-provider acceptance run (`docs/MANUAL_TEST.md`): needs cost approval.
-2. Benchmark with a different model as Critic: paid provider calls; not made.
+2. ~~Benchmark with a different model as Critic~~ **Done 2026-11-15** (owner-approved, cap $1): qwen-flash Arbiter + mistral-nemo Critic, 144 of 144 trials, about $0.07, Critic arm -1.9 points, default off. Results in `bench/judge/RESULTS.md`. Uses the new `--critic` runner option.
 3. Update the live checkout (back up `.env`, `conclave.json`, `conclave.db` first).
 4. Measure panel vs one strong model.
 
 ## Review status
 
-No code changed this session, so no review checkpoint applies.
+The `--critic` runner change was reviewed twice: Codex (completed; its script wrote the result to a file named `-` instead of stdout, which is a script quirk to fix) and the `opus-reviewer` fallback. Fixed: unpriced Critic bypassing cost approval and `--max-spend` (now refused), estimate not an upper bound (input and output now priced at the dearer of each), failed Critic reported under the Arbiter's name, blank `--critic`, and two provider names on one model passing as a "different" Critic. Left as is (low): labels join names with `+`, so a provider literally named `a+b` could collide. After the fixes: `tests/test_bench_judge.py` and `tests/test_docs.py` 126 passed. The full suite was not rerun after these bench-only changes (it passed 3639/1 environmental on `dba8c59`).
 
 ## Test result
 
@@ -40,7 +40,7 @@ Full-suite command that works here: set `TMP` and `TEMP` to a writable directory
 ## Acceptance evidence
 
 `docs/TEST_LOG.md` (2026-11-13) already records every acceptance scenario as PASS, including the all-healthy rerun with 3 sources from 2 families. Not repeated (it would only spend free-tier quota; Gemini allows 20 requests a day).
-Real config, `.env` and the database copy live in `C:\AMD\p115`, not in this checkout. No provider calls and no paid calls were made this session.
+Real config, `.env` and the database copy live in `C:\AMD\p115`, not in this checkout. Later in the session, with the owner's approval (billing fine, cap $1), one live OpenRouter benchmark ran (about $0.07; see Remaining work item 2). No other provider calls were made.
 
 ## Exact next action (needs the user)
 
