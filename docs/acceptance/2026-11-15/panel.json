@@ -1,0 +1,280 @@
+{
+ "A": {
+  "delegates": [
+   {
+    "name": "groq",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "openai/gpt-oss-120b",
+    "chars": 726
+   },
+   {
+    "name": "openrouter-free",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "recursive/flint-v1.0:free",
+    "chars": 674
+   },
+   {
+    "name": "qwen-flash",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "qwen/qwen3.7-flash",
+    "chars": 699
+   },
+   {
+    "name": "deepseek-v3",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "deepseek/deepseek-chat-v3-0324",
+    "chars": 708
+   },
+   {
+    "name": "badkey",
+    "status": "failed",
+    "kind": "auth",
+    "reserve": false,
+    "model": null,
+    "chars": 0
+   }
+  ],
+  "independent_sources": 4,
+  "quorum": "met",
+  "critic": null,
+  "arbiter": [
+   "groq",
+   "succeeded"
+  ],
+  "positions": [
+   [
+    "B",
+    "Use a monorepo for the five‑person team."
+   ],
+   [
+    "C",
+    "Start with a monorepo and split only when justified service boundaries exist."
+   ],
+   [
+    "E",
+    "Adopt a monorepo."
+   ],
+   [
+    "D",
+    "Start with a monorepo; it’s easier to split later than to merge."
+   ],
+   [
+    null,
+    ""
+   ]
+  ],
+  "format_ok": true,
+  "est_cost": 0.0005693,
+  "cost": {
+   "total_calls": 6,
+   "estimated_total_usd": 0.0005693,
+   "priced_calls": 5,
+   "unpriced_calls": 1,
+   "possibly_billed_unpriced_calls": 0,
+   "reported_total_usd": 0.0005693,
+   "reported_calls": 3
+  },
+  "stopped": null
+ },
+ "A_final_text": "## Common ground\n- All delegates recommend starting with a monorepo for the five‑person team. [B, C, D, E]  \n- They agree a monorepo simplifies shared code changes, unified CI/CD, and makes later service extraction easier. [B, C, D, E]  \n- The primary risk identified is unintended architectural coupling that can hinder future service boundaries. [B, C, E]  \n\n## Disagreements\n- D emphasizes repository bloat and tooling discipline as the top risk, whereas others focus on coupling. [D]  \n- D notes the need for specific monorepo tooling (e.g., Bazel, Turborepo) as a prerequisite, which others do not mention. [D]  \n\n## Uncertainty\n- Coverage: 4 of 5 delegates answered (B, C, D, E); each provides an independent source. Remaining unknowns include future team growth, regulatory isolation needs, and divergent deployment cycles.  \n\n## Synthesis\nRecommendation: Use a single monorepo for the current five‑person CRUD project. It reduces coordination overhead, enables atomic cross‑module changes, and allows straightforward extraction of services later. The most important risk is accidental tight coupling of code across logical boundaries, which could make future service separation costly. Enforce clear module boundaries and regular refactoring to mitigate this risk.",
+ "B": {
+  "delegates": [
+   {
+    "name": "groq",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "openai/gpt-oss-120b",
+    "chars": 1041
+   },
+   {
+    "name": "openrouter-free",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "baidu/ernie-5.5-flash-preview:free",
+    "chars": 1139
+   },
+   {
+    "name": "qwen-flash",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "qwen/qwen3.7-flash",
+    "chars": 1283
+   },
+   {
+    "name": "deepseek-v3",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "deepseek/deepseek-chat-v3-0324",
+    "chars": 663
+   },
+   {
+    "name": "badkey",
+    "status": "failed",
+    "kind": "auth",
+    "reserve": false,
+    "model": null,
+    "chars": 0
+   }
+  ],
+  "independent_sources": 4,
+  "quorum": "met",
+  "critic": "succeeded",
+  "arbiter": [
+   "groq",
+   "succeeded"
+  ],
+  "positions": [
+   [
+    "C",
+    "For this team and project, a monorepo is the better choice."
+   ],
+   [
+    "A",
+    "Use a monorepo with a single deployable app and machine-enforced module boundaries, splitt"
+   ],
+   [
+    "B",
+    "I recommend using a monorepo to maximize development velocity and simplify refactoring for"
+   ],
+   [
+    "E",
+    "Start with a monorepo but monitor tooling overhead."
+   ],
+   [
+    null,
+    ""
+   ]
+  ],
+  "format_ok": true,
+  "est_cost": 0.00103424,
+  "cost": {
+   "total_calls": 7,
+   "estimated_total_usd": 0.00103424,
+   "priced_calls": 6,
+   "unpriced_calls": 1,
+   "possibly_billed_unpriced_calls": 0,
+   "reported_total_usd": 0.00103424,
+   "reported_calls": 4
+  },
+  "stopped": null
+ },
+ "D_without_reserve": {
+  "delegates": [
+   {
+    "name": "badkey",
+    "status": "failed",
+    "kind": "auth",
+    "reserve": false,
+    "model": null,
+    "chars": 0
+   },
+   {
+    "name": "groq",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "openai/gpt-oss-120b",
+    "chars": 619
+   }
+  ],
+  "independent_sources": 1,
+  "quorum": "unmet",
+  "critic": null,
+  "arbiter": null,
+  "positions": [
+   [
+    null,
+    ""
+   ],
+   [
+    null,
+    "Use a monorepo for now."
+   ]
+  ],
+  "format_ok": null,
+  "est_cost": 0.0,
+  "cost": {
+   "total_calls": 2,
+   "estimated_total_usd": 0.0,
+   "priced_calls": 1,
+   "unpriced_calls": 1,
+   "possibly_billed_unpriced_calls": 0,
+   "reported_total_usd": null,
+   "reported_calls": 0
+  },
+  "stopped": null
+ },
+ "D_with_reserve": {
+  "delegates": [
+   {
+    "name": "badkey",
+    "status": "failed",
+    "kind": "auth",
+    "reserve": false,
+    "model": null,
+    "chars": 0
+   },
+   {
+    "name": "groq",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": false,
+    "model": "openai/gpt-oss-120b",
+    "chars": 774
+   },
+   {
+    "name": "qwen-flash",
+    "status": "succeeded",
+    "kind": null,
+    "reserve": true,
+    "model": "qwen/qwen3.7-flash",
+    "chars": 760
+   }
+  ],
+  "independent_sources": 2,
+  "quorum": "met",
+  "critic": null,
+  "arbiter": [
+   "groq",
+   "succeeded"
+  ],
+  "positions": [
+   [
+    null,
+    ""
+   ],
+   [
+    "B",
+    "Use a monorepo for now."
+   ],
+   [
+    "A",
+    "Use a monorepo to maximize early velocity and simplify cross-component work."
+   ]
+  ],
+  "format_ok": true,
+  "est_cost": 0.00045551,
+  "cost": {
+   "total_calls": 4,
+   "estimated_total_usd": 0.00045551,
+   "priced_calls": 3,
+   "unpriced_calls": 1,
+   "possibly_billed_unpriced_calls": 0,
+   "reported_total_usd": 0.00045551,
+   "reported_calls": 1
+  },
+  "stopped": null
+ }
+}

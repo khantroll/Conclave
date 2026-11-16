@@ -12,6 +12,7 @@ BODYLESS_POSTS = [
     "/api/runs/any-run/delegates/demo-a/retry",
     "/api/runs/any-run/critic/retry",
     "/api/runs/any-run/arbiter/retry",
+    "/api/runs/any-run/cancel",
 ]
 
 

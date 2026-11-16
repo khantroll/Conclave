@@ -1,0 +1,131 @@
+{
+ "C1_tiny_ceiling": {
+  "http": 200,
+  "delegates": [
+   [
+    "qwen-flash",
+    "failed",
+    "cost_ceiling"
+   ],
+   [
+    "deepseek-v3",
+    "failed",
+    "cost_ceiling"
+   ]
+  ],
+  "arbiter": null,
+  "stopped": "cost_ceiling",
+  "ledger_rows": 0,
+  "ledger_estimated": 0,
+  "ledger_reported": [],
+  "result_cost": null
+ },
+ "C2_roomy_ceiling": {
+  "http": 200,
+  "delegates": [
+   [
+    "qwen-flash",
+    "succeeded",
+    null
+   ],
+   [
+    "deepseek-v3",
+    "succeeded",
+    null
+   ]
+  ],
+  "arbiter": [
+   "qwen-flash",
+   "succeeded",
+   null
+  ],
+  "stopped": null,
+  "ledger_rows": 3,
+  "ledger_estimated": 0.00100245,
+  "ledger_reported": [
+   0.00033092,
+   0.00031151,
+   0.00036002
+  ],
+  "result_cost": 0.00100245
+ },
+ "C3_partial_ceiling": {
+  "http": 200,
+  "delegates": [
+   [
+    "qwen-flash",
+    "succeeded",
+    null
+   ],
+   [
+    "deepseek-v3",
+    "failed",
+    "cost_ceiling"
+   ]
+  ],
+  "arbiter": [
+   "qwen-flash",
+   "succeeded",
+   null
+  ],
+  "stopped": "cost_ceiling",
+  "ledger_rows": 2,
+  "ledger_estimated": 0.00075329,
+  "ledger_reported": [
+   0.00031389,
+   0.0004394
+  ],
+  "result_cost": 0.00075329
+ },
+ "C4_preflight": {
+  "http": 422,
+  "detail": "A cost ceiling needs a known cost for every participant (input price, output price, max_output_tokens and transient_max_retries). Cannot bound: demo-a"
+ },
+ "E_background_cancel": {
+  "start_http": 202,
+  "cancel_http": 202,
+  "cancel_seconds": 0.05,
+  "status_after_cancel": "interrupted",
+  "ledger_rows_right_after": 2,
+  "ledger_rows_8s_later": 2,
+  "second_cancel_http": 409,
+  "background_list": []
+ },
+ "F_default": {
+  "arbiter_ledger_rows": [
+   [
+    "deepseek-v3",
+    "timeout"
+   ],
+   [
+    "qwen-flash",
+    "timeout"
+   ],
+   [
+    "groq",
+    "timeout"
+   ]
+  ],
+  "arbiter_result": [
+   "groq",
+   "timed_out"
+  ],
+  "prior_attempts": [
+   "deepseek-v3",
+   "qwen-flash"
+  ]
+ },
+ "F_shared": {
+  "arbiter_ledger_rows": [
+   [
+    "deepseek-v3",
+    "timeout"
+   ]
+  ],
+  "arbiter_result": [
+   "deepseek-v3",
+   "timed_out"
+  ],
+  "prior_attempts": []
+ }
+}

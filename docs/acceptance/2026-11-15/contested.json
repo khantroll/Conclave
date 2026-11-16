@@ -1,0 +1,212 @@
+{
+ "run_id": "79590f08-b136-46fc-82dd-9bd1ca5c5ff1",
+ "status": "complete",
+ "delegates": [
+  {
+   "name": "groq",
+   "status": "succeeded",
+   "kind": null,
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 4135,
+   "attempts": 1,
+   "raw_chars": 1148
+  },
+  {
+   "name": "openrouter-free",
+   "status": "failed",
+   "kind": "malformed",
+   "model": null,
+   "latency_ms": 21953,
+   "attempts": 1,
+   "raw_chars": 0
+  },
+  {
+   "name": "qwen-flash",
+   "status": "succeeded",
+   "kind": null,
+   "model": "qwen/qwen3.7-flash",
+   "latency_ms": 22722,
+   "attempts": 1,
+   "raw_chars": 1116
+  },
+  {
+   "name": "deepseek-v3",
+   "status": "succeeded",
+   "kind": null,
+   "model": "deepseek/deepseek-chat-v3-0324",
+   "latency_ms": 10484,
+   "attempts": 1,
+   "raw_chars": 899
+  },
+  {
+   "name": "mistral",
+   "status": "failed",
+   "kind": "rate_limit",
+   "model": null,
+   "latency_ms": 3093,
+   "attempts": 2,
+   "raw_chars": 0
+  },
+  {
+   "name": "gemini",
+   "status": "succeeded",
+   "kind": null,
+   "model": "gemini-3.6-flash",
+   "latency_ms": 7705,
+   "attempts": 1,
+   "raw_chars": 1067
+  }
+ ],
+ "independent_sources": 4,
+ "families": 4,
+ "quorum": "Quorum met: 4 independent source(s) answered (required 3).",
+ "positions": [
+  {
+   "label": "F",
+   "conclusion": "Invest the $50,000 in a broad stock index fund.",
+   "confidence": "medium"
+  },
+  {
+   "label": null,
+   "conclusion": null,
+   "confidence": null
+  },
+  {
+   "label": "A",
+   "conclusion": "Invest the $50,000 in a broad stock index fund given a long time horizon and established liquidity cushion.",
+   "confidence": "medium"
+  },
+  {
+   "label": "B",
+   "conclusion": "Invest in a broad stock index fund.",
+   "confidence": "medium"
+  },
+  {
+   "label": null,
+   "conclusion": null,
+   "confidence": null
+  },
+  {
+   "label": "E",
+   "conclusion": "They should pay down the mortgage because a guaranteed 6.5% return offers a superior risk-adjusted financial outcome compared to volatile stock market returns.",
+   "confidence": "high"
+  }
+ ],
+ "critic": {
+  "name": "qwen-flash",
+  "status": "succeeded"
+ },
+ "arbiter": {
+  "name": "groq",
+  "status": "succeeded"
+ },
+ "arbiter_sections_ok": true,
+ "judge_overlaps": [
+  "A",
+  "F"
+ ],
+ "ledger": [
+  {
+   "stage": "delegate",
+   "provider": "groq",
+   "outcome": "ok",
+   "http_status": 200,
+   "prompt_tokens": 215,
+   "completion_tokens": 520,
+   "estimated_cost_usd": 0.0,
+   "reported_cost_usd": null
+  },
+  {
+   "stage": "delegate",
+   "provider": "openrouter-free",
+   "outcome": "ok",
+   "http_status": 200,
+   "prompt_tokens": 163,
+   "completion_tokens": 1500,
+   "estimated_cost_usd": 0.0,
+   "reported_cost_usd": 0.0
+  },
+  {
+   "stage": "delegate",
+   "provider": "qwen-flash",
+   "outcome": "ok",
+   "http_status": 200,
+   "prompt_tokens": 166,
+   "completion_tokens": 1922,
+   "estimated_cost_usd": 0.00025484,
+   "reported_cost_usd": 0.00025484
+  },
+  {
+   "stage": "delegate",
+   "provider": "deepseek-v3",
+   "outcome": "ok",
+   "http_status": 200,
+   "prompt_tokens": 148,
+   "completion_tokens": 195,
+   "estimated_cost_usd": 0.00026522,
+   "reported_cost_usd": 0.00026522
+  },
+  {
+   "stage": "delegate",
+   "provider": "mistral",
+   "outcome": "http_error",
+   "http_status": 429,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "estimated_cost_usd": null,
+   "reported_cost_usd": null
+  },
+  {
+   "stage": "delegate",
+   "provider": "gemini",
+   "outcome": "ok",
+   "http_status": 200,
+   "prompt_tokens": 157,
+   "completion_tokens": 234,
+   "estimated_cost_usd": 0.0,
+   "reported_cost_usd": null
+  },
+  {
+   "stage": "delegate",
+   "provider": "mistral",
+   "outcome": "http_error",
+   "http_status": 429,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "estimated_cost_usd": null,
+   "reported_cost_usd": null
+  },
+  {
+   "stage": "critic",
+   "provider": "qwen-flash",
+   "outcome": "ok",
+   "http_status": 200,
+   "prompt_tokens": 1331,
+   "completion_tokens": 2754,
+   "estimated_cost_usd": 0.00039795,
+   "reported_cost_usd": 0.00039795
+  },
+  {
+   "stage": "arbiter",
+   "provider": "groq",
+   "outcome": "ok",
+   "http_status": 200,
+   "prompt_tokens": 2214,
+   "completion_tokens": 1458,
+   "estimated_cost_usd": 0.0,
+   "reported_cost_usd": null
+  }
+ ],
+ "cost": {
+  "total_calls": 9,
+  "estimated_total_usd": 0.00091801,
+  "priced_calls": 7,
+  "unpriced_calls": 2,
+  "possibly_billed_unpriced_calls": 0,
+  "reported_total_usd": 0.00091801,
+  "reported_calls": 4
+ },
+ "arbiter_text": "## Common ground\n- The loan is a 6.5 % fixed‑rate mortgage with no pre‑payment penalty. [A, B, E, F]  \n- The choice is a trade‑off between a guaranteed 6.5 % “return” from pre‑payment and the higher, but riskier, expected return of a diversified equity index. [A, B, E, F]  \n- All delegates assume the borrower has stable income and can tolerate some market volatility. [A, B, F]\n\n## Disagreements\n- Three delegates argue that expected equity returns exceed the mortgage cost; one argues the guaranteed 6.5 % is superior on a risk‑adjusted basis. [A, B, F] vs [E]  \n- Treatment of mortgage‑interest deductibility: E treats it as fully tax‑neutral, while others apply typical after‑tax reductions. [E] vs [A, B, F]  \n- Weight given to behavioral and liquidity benefits of debt elimination versus potential wealth creation from equities. [E] vs [A, B, F]\n\n## Uncertainty\n- Coverage: 4 of 6 delegates answered (A, B, E, F).  \n- Future equity returns may differ from historical 7‑10 % averages, especially given current valuation levels.  \n- The borrower’s actual emergency‑fund size, marginal tax bracket, and comfort with a $50 k equity position are unspecified.  \n- Alternative low‑risk assets (e.g., high‑yield T‑bills or CDs) that could match the mortgage rate are not evaluated.\n\n## Synthesis\nInsufficient evidence to claim a universal rule, but assuming the homeowner has an adequate emergency fund, faces no pre‑payment penalty, and is comfortable holding a volatile asset for a decade‑plus horizon, investing the $50 000 in a low‑cost broad stock index fund is likely to produce higher net wealth than paying down the mortgage. Expected nominal equity returns (~9 %) exceed the after‑tax mortgage cost (~4‑5 %). **Confidence: medium.**",
+ "critic_text": "**Material Disagreements**\nResponses split 3-to-1 on the conclusion. A, B, and F advocate investing based on nominal expected returns, liquidity preservation, and compounding. E advocates prepayment based on certainty, sequence-of-returns risk, and risk-adjusted superiority. No delegate attempts a mathematical reconciliation (e.g., expected utility comparison, Monte Carlo drawdown analysis, or real-rate context), leaving the trade-off conceptually unresolved.\n\n**Weak or Unsupported Claims**\n- **E’s risk-adjusted assertion:** Claiming equities’ “risk-adjusted expected return [is] lower than a guaranteed 6.5%” is empirically contentious. Long-term data generally show higher market risk premiums (beta-adjusted and volatility-adjusted); presenting it as settled fact misstates portfolio theory without citations or methodology.\n- **F’s internal tax contradiction:** F states after-tax mortgage cost is ~4–5% for “most U.S. brackets,” yet later claims a high marginal rate + full deductibility makes prepayment “more attractive.” Higher brackets increase the deduction’s value, lowering after-tax debt cost and *strengthening* the case to invest, not pay down.\n- **Unsubstantiated return benchmarks:** All delegates recycle generic 7–10% or 9–10% historical averages without adjusting for current Shiller CAPE multiples, secular deceleration in equity growth, or the recent era of elevated real rates that compress forward-looking equity premiums.\n\n**Important Assumptions/Unknowns**\nThe three “invest” responses exhibit **repeated, unverified convergence** rather than genuine agreement: they independently invoke identical boilerplate (emergency fund prerequisite, volatility tolerance, tax neutrality, long horizon) without cross-checking or adding distinct risk modeling. Critical omissions include:\n- Whether the borrower truly holds 3–6 months of liquid reserves; if not, concentrating $50k in equities creates fatal liquidity fragility.\n- Current alternative risk-free yields (T-bills, CDs) that can rival or exceed 6.5% without locking up capital.\n- Existing retirement allocations; adding equity exposure to an already-overconcentrated household balance sheet changes marginal risk.\n- Psychological leverage fatigue, which isn’t quantified but materially influences compliance and panic-selling behavior.\n\n**Minority Insights the Arbiter Should Not Lose**\n- **E’s certainty premium:** The argument that debt elimination offers behavioral dividends (zero leverage stress, predictable cash flow, protection against sequence-of-returns ruin) is undersold by conventional alpha-chasing models. For investors nearing fixed-income years or facing income volatility, a risk-free 6.5% often delivers higher utility than volatile outperformance.\n- **Option value of liquidity:** None of the models price the strategic flexibility of keeping $50k liquid (home repair caps, job transition cushion, refinancing windows). Treating cash as purely “dead weight” ignores real-world contingency economics.\n- **Hybrid/practical workarounds missed:** No delegate considers balanced approaches (e.g., partial prepayment + max 401k match + taxable brokerage ladder) or using a HELOC line as a disciplined volatility buffer while still capturing upside.\n\nArbiter note: The consensus leans investing due to familiar heuristics, not robust individualized modeling. Weight E’s certainty/liquidity arguments heavily, and demand scenario stress-testing before choosing.",
+ "identity_tokens_in_judge_prompts": []
+}
