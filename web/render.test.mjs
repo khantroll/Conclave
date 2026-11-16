@@ -333,3 +333,41 @@ test("the Critic has no default: the form must choose none or name a provider", 
     assert.match(result.error, /no default/);
   }
 });
+
+test("unknown provider facts and unknown costs are shown as unknown, never zero", () => {
+  const html = render.providerStatusHtml([
+    { name: "p", source: "configured", model: null, credentials: "set", capabilities: [], input_cost_per_million: null, output_cost_per_million: 0.5, max_output_tokens: null, context_window_tokens: null, quota_remaining: null, last_success_at: null, last_failure_at: null },
+  ]);
+  assert.match(html, /<td>unknown<\/td>/); // model
+  assert.match(html, /<td>unknown<\/td>\s*<td>max output unknown<br>context unknown/); // price needs both
+  assert.match(html, /quota unknown/);
+  assert.match(html, /none recorded/);
+  assert.equal(render.costOrUnknown(null), "unknown");
+  assert.equal(render.costOrUnknown(0), "$0.00000"); // a real zero is not "unknown"
+  const ledger = render.ledgerHtml([{ stage: "arbiter", provider: "p", outcome: "timeout", attempt_no: 1, estimated_cost_usd: null, possibly_billed: true, prompt_tokens: null, completion_tokens: null, latency_ms: null, reported_cost_usd: null }]);
+  assert.match(ledger, /unpriced \(possibly billed\)/);
+  assert.match(ledger, /not reported/);
+  assert.doesNotMatch(ledger, /\$0/);
+});
+
+test("hostile provider names, errors and ledger text stay inert in the new tables", () => {
+  const evil = `<img src=x onerror=alert(1)>"'&`;
+  const html =
+    render.providerStatusHtml([{ name: evil, source: evil, model: evil, credentials: evil, unavailable_reason: evil, capabilities: [evil], last_success_at: evil, last_failure_at: evil, last_failure_outcome: evil }]) +
+    render.ledgerHtml([{ stage: evil, provider: evil, outcome: evil, attempt_no: 1, estimated_cost_usd: 0.1 }]);
+  assert.doesNotMatch(html, /<img/);
+  assert.doesNotMatch(html.replaceAll(/<\/?(table|thead|tbody|tr|th|td|strong|small|br)( class="data")?>/g, ""), /<[a-z]/i);
+});
+
+test("the dashboard says when cost is unknown and what is running", () => {
+  assert.match(render.dashboardSummary({ cost_last_7_days: null, running_in_background: [] }), /No provider calls recorded/);
+  const text = render.dashboardSummary({ cost_last_7_days: { total_calls: 3, estimated_total_usd: null, unpriced_calls: 3, possibly_billed_unpriced_calls: 1 }, running_in_background: ["a"] });
+  assert.match(text, /estimated cost unknown \(3 call\(s\) unpriced, 1 of them possibly billed\)/);
+  assert.match(text, /1 run\(s\) running in the background/);
+});
+
+test("progress text reflects the stages saved so far", () => {
+  assert.equal(render.progressText({}), "Starting…");
+  const run = { result: { panel: { delegates: [{ status: "succeeded" }, { status: "failed" }] }, critic: null, arbiter: null } };
+  assert.equal(render.progressText(run), "Panel: 1 answered, 1 failed or skipped · Critic pending or not used · Arbiter pending");
+});

@@ -306,7 +306,96 @@
       .join("");
   }
 
+  // A cost that is not known is shown as "unknown", never as zero.
+  function costOrUnknown(value) {
+    const text = formatCost(value);
+    return text || "unknown";
+  }
+
+  function providerStatusHtml(rows) {
+    if (!rows || !rows.length) return "";
+    const unknown = (v) => (v == null || v === "" ? "unknown" : escapeHtml(v));
+    const price = (p) =>
+      p.input_cost_per_million == null || p.output_cost_per_million == null
+        ? "unknown"
+        : `${escapeHtml(p.input_cost_per_million)} / ${escapeHtml(p.output_cost_per_million)} per M`;
+    const failure = (p) =>
+      p.last_failure_at
+        ? `${escapeHtml(p.last_failure_at)} (${escapeHtml(p.last_failure_outcome)}${
+            p.last_failure_http_status ? " " + escapeHtml(p.last_failure_http_status) : ""
+          })`
+        : "none recorded";
+    const body = rows
+      .map(
+        (p) => `<tr>
+          <td><strong>${escapeHtml(p.name)}</strong><br><small>${unknown(p.source)}</small></td>
+          <td>${unknown(p.model)}</td>
+          <td>${unknown(p.credentials)}${p.unavailable_reason ? "<br><small>" + escapeHtml(p.unavailable_reason) + "</small>" : ""}</td>
+          <td>${escapeHtml((p.capabilities || []).join(", ") || "general")}</td>
+          <td>${price(p)}</td>
+          <td>max output ${unknown(p.max_output_tokens)}<br>context ${unknown(p.context_window_tokens)}</td>
+          <td>quota ${unknown(p.quota_remaining)}</td>
+          <td>${p.last_success_at ? escapeHtml(p.last_success_at) : "none recorded"}</td>
+          <td>${failure(p)}</td>
+        </tr>`,
+      )
+      .join("");
+    return `<table class="data"><thead><tr><th>Provider</th><th>Model</th><th>Credentials</th><th>Capabilities</th><th>Price in / out</th><th>Limits</th><th>Quota</th><th>Last success</th><th>Last failure</th></tr></thead><tbody>${body}</tbody></table>`;
+  }
+
+  function dashboardSummary(dash) {
+    const cost = dash && dash.cost_last_7_days;
+    const lines = [];
+    if (!cost) {
+      lines.push("No provider calls recorded in the last 7 days.");
+    } else {
+      const total = cost.estimated_total_usd == null ? "unknown" : formatCost(cost.estimated_total_usd);
+      lines.push(
+        `Last 7 days: ${cost.total_calls} call(s), estimated cost ${total} (${cost.unpriced_calls} call(s) unpriced, ${cost.possibly_billed_unpriced_calls} of them possibly billed). Estimates are not invoices.`,
+      );
+    }
+    const running = (dash && dash.running_in_background) || [];
+    lines.push(running.length ? `${running.length} run(s) running in the background.` : "No background runs active.");
+    return lines.join(" ");
+  }
+
+  function ledgerHtml(rows) {
+    if (!rows || !rows.length) return "<p>No provider calls were recorded for this run.</p>";
+    const body = rows
+      .map(
+        (r) => `<tr>
+          <td>${escapeHtml(r.stage)}</td>
+          <td>${escapeHtml(r.provider)}</td>
+          <td>${escapeHtml(r.outcome)}${r.http_status ? " " + escapeHtml(r.http_status) : ""}</td>
+          <td>${escapeHtml(r.attempt_no)}</td>
+          <td>${r.latency_ms == null ? "unknown" : escapeHtml(r.latency_ms) + " ms"}</td>
+          <td>${r.prompt_tokens == null ? "unknown" : escapeHtml(r.prompt_tokens)} / ${r.completion_tokens == null ? "unknown" : escapeHtml(r.completion_tokens)}</td>
+          <td>${r.estimated_cost_usd == null ? "unpriced" : escapeHtml(formatCost(r.estimated_cost_usd))}${r.possibly_billed && r.estimated_cost_usd == null ? " (possibly billed)" : ""}</td>
+          <td>${r.reported_cost_usd == null ? "not reported" : escapeHtml(formatCost(r.reported_cost_usd))}</td>
+        </tr>`,
+      )
+      .join("");
+    return `<table class="data"><thead><tr><th>Stage</th><th>Provider</th><th>Outcome</th><th>Attempt</th><th>Latency</th><th>Tokens in / out</th><th>Estimated</th><th>Provider-reported</th></tr></thead><tbody>${body}</tbody></table>`;
+  }
+
+  function progressText(run) {
+    const result = run && run.result;
+    if (!result) return "Starting…";
+    const delegates = (result.panel && result.panel.delegates) || [];
+    const done = delegates.filter((d) => d.status === "succeeded").length;
+    const failed = delegates.filter((d) => d.status !== "succeeded").length;
+    const parts = [`Panel: ${done} answered, ${failed} failed or skipped`];
+    parts.push(result.critic ? `Critic ${result.critic.status}` : "Critic pending or not used");
+    parts.push(result.arbiter ? `Arbiter ${result.arbiter.status}` : "Arbiter pending");
+    return parts.join(" · ");
+  }
+
   return {
+    costOrUnknown,
+    providerStatusHtml,
+    dashboardSummary,
+    ledgerHtml,
+    progressText,
     escapeHtml,
     summarizeQuestion,
     formatCost,

@@ -830,3 +830,27 @@ def test_a_background_run_can_be_cancelled_and_is_marked_interrupted(tmp_path, m
 def test_the_default_still_waits_for_the_whole_run(client):
     response = client.post("/api/deliberate", json=BODY)
     assert response.status_code == 200 and response.json()["arbiter"]["status"] == "succeeded"
+
+
+def test_provider_status_reports_unknowns_as_unknown(client):
+    rows = {r["name"]: r for r in client.get("/api/providers/status").json()}
+    demo = rows["demo-a"]
+    assert demo["source"] == "demo" and demo["last_success_at"] is None
+    assert demo["quota_remaining"] is None and demo["context_window_tokens"] is None
+    assert demo["input_cost_per_million"] is None  # unknown, not 0
+    assert "api_key" not in str(rows).lower()
+
+
+def test_provider_status_learns_last_success_from_the_ledger(client):
+    assert client.post("/api/providers/demo-a/test").status_code == 200
+    rows = {r["name"]: r for r in client.get("/api/providers/status").json()}
+    assert rows["demo-a"]["last_success_at"] is not None
+    assert rows["demo-b"]["last_success_at"] is None
+
+
+def test_dashboard_has_recent_runs_cost_and_background_list(client):
+    body = {"question": "q", "delegates": ["demo-a"], "arbiter": "demo-arbiter"}
+    assert client.post("/api/deliberate", json=body).status_code == 200
+    dash = client.get("/api/dashboard").json()
+    assert len(dash["recent_runs"]) == 1 and dash["running_in_background"] == []
+    assert dash["cost_last_7_days"]["total_calls"] >= 1

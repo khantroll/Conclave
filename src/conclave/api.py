@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from pathlib import Path
 
@@ -290,6 +291,65 @@ def create_app(
                 for name in orchestrator.provider_names
                 if name in descriptors
             ],
+        }
+
+    @app.get("/api/providers/status")
+    async def provider_status() -> list[dict[str, object]]:
+        """What is known about each provider. Anything not reported is None, never a guess."""
+        activity = store.provider_activity()
+        rows = []
+        for name in orchestrator.provider_names:
+            descriptor = descriptors.get(name)
+            provider = providers.get(name)
+            if isinstance(provider, UnavailableProvider):
+                credentials = "missing"
+            elif getattr(provider, "api_key", None):
+                credentials = "set"  # present in the environment; not proof the key is valid
+            elif descriptor is not None and descriptor.source == "configured":
+                credentials = "none set (a local endpoint may not need one)"
+            else:
+                credentials = None
+            seen = activity.get(name, {})
+            rows.append(
+                {
+                    "name": name,
+                    "source": descriptor.source if descriptor else None,
+                    "model": descriptor.model if descriptor else None,
+                    "capabilities": descriptor.capabilities if descriptor else [],
+                    "credentials": credentials,
+                    "unavailable_reason": (
+                        provider.error if isinstance(provider, UnavailableProvider) else None
+                    ),
+                    "input_cost_per_million": descriptor.input_cost_per_million
+                    if descriptor
+                    else None,
+                    "output_cost_per_million": descriptor.output_cost_per_million
+                    if descriptor
+                    else None,
+                    "max_output_tokens": getattr(provider, "max_output_tokens", None),
+                    "max_prompt_chars": getattr(provider, "max_prompt_chars", None),
+                    "context_window_tokens": None,  # not configured or reported anywhere
+                    "quota_remaining": None,  # no provider reports this to Conclave
+                    "quota_reset_at": None,
+                    "last_success_at": seen.get("last_success_at"),
+                    "last_failure_at": seen.get("last_failure_at"),
+                    "last_failure_outcome": seen.get("last_failure_outcome"),
+                    "last_failure_http_status": seen.get("last_failure_http_status"),
+                }
+            )
+        return rows
+
+    @app.get("/api/dashboard")
+    async def dashboard() -> dict[str, object]:
+        since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        recent = _page(None, False, 10, None)
+        return {
+            "since": since,
+            "cost_last_7_days": (
+                overview.model_dump() if (overview := store.ledger_overview(since)) else None
+            ),
+            "running_in_background": sorted(background_runs),
+            "recent_runs": [run.model_dump() for run in recent],
         }
 
     @app.post("/api/providers/test-all", response_model=list[ProviderTestResult])

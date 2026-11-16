@@ -24,6 +24,10 @@ const {
   sourceSummary,
   AGREEMENT_NOTE,
   historyHtml,
+  providerStatusHtml,
+  dashboardSummary,
+  ledgerHtml,
+  progressText,
 } = ConclaveRender;
 
 async function api(path, options = {}) {
@@ -435,12 +439,28 @@ async function deliberate() {
   $("runButton").disabled = true;
   $("status").textContent = "The delegates are deliberating…";
   try {
-    const response = await api(`/api/workspaces/${activeWorkspaceId}/deliberate`, {
-      method: "POST",
-      body: JSON.stringify({question}),
-    });
-    const result = await response.json();
-    renderResult(result, response.headers.get("X-Conclave-Run-ID"));
+    const options = runOptions();
+    const background = $("optBackground").checked;
+    const response = await api(
+      `/api/workspaces/${activeWorkspaceId}/deliberate${background ? "?background=true" : ""}`,
+      {method: "POST", body: JSON.stringify({question, ...options})},
+    );
+    let result;
+    let runId = response.headers.get("X-Conclave-Run-ID");
+    if (background) {
+      const started = await response.json();
+      runId = started.run_id;
+      const finished = await followBackgroundRun(runId);
+      if (!finished) {
+        await loadHistory();
+        await loadDashboard();
+        return;
+      }
+      result = finished.result;
+    } else {
+      result = await response.json();
+    }
+    renderResult(result, runId);
     const cost = formatCost(result.estimated_cost_usd);
     const sourceCount = result.panel.independent_source_count;
     const sameSource = sourceCount != null && result.panel.successful_count > sourceCount;
@@ -462,6 +482,7 @@ async function deliberate() {
           : "Not enough delegates succeeded to synthesize.";
     }
     await loadHistory();
+    await loadDashboard();
   } catch (error) {
     $("status").textContent = error.message;
   } finally {
@@ -469,10 +490,84 @@ async function deliberate() {
   }
 }
 
+function runOptions() {
+  const options = {};
+  const ceiling = $("optCostCeiling").value.trim();
+  if (ceiling) options.max_estimated_cost_usd = Number(ceiling);
+  if ($("optSharedDeadline").checked) options.shared_stage_deadline = true;
+  if ($("optUseReserves").checked) options.use_reserves = true;
+  return options;
+}
+
+let followedRunId = null;
+
+// Poll a background run until it is no longer running, showing each stage as it is saved.
+// Returns the finished run, or null when it was interrupted or cancelled.
+async function followBackgroundRun(runId) {
+  followedRunId = runId;
+  $("cancelRun").classList.remove("hidden");
+  try {
+    for (;;) {
+      const run = await (await api(`/api/runs/${runId}`)).json();
+      $("status").textContent = progressText(run);
+      if (run.result && run.result.panel) renderResult(run.result, runId);
+      if (run.status === "complete") return run;
+      if (run.status === "interrupted") {
+        $("status").textContent = "The run was interrupted. Answers already received are kept in the history.";
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  } finally {
+    followedRunId = null;
+    $("cancelRun").classList.add("hidden");
+  }
+}
+
+async function cancelFollowedRun() {
+  if (!followedRunId) return;
+  try {
+    await api(`/api/runs/${followedRunId}/cancel`, {method: "POST"});
+  } catch (error) {
+    $("status").textContent = error.message;
+  }
+}
+
+async function loadDashboard() {
+  try {
+    const [dash, status] = await Promise.all([
+      api("/api/dashboard").then((r) => r.json()),
+      api("/api/providers/status").then((r) => r.json()),
+    ]);
+    $("dashboardSummary").textContent = dashboardSummary(dash);
+    $("providerStatus").innerHTML = providerStatusHtml(status);
+  } catch (error) {
+    $("dashboardSummary").textContent = error.message;
+  }
+}
+
+async function showLedger() {
+  if (!currentRunId) return;
+  const target = $("ledgerBody");
+  if (!target.classList.contains("hidden")) {
+    target.classList.add("hidden");
+    return;
+  }
+  try {
+    const rows = await (await api(`/api/runs/${currentRunId}/calls?chain=true`)).json();
+    target.innerHTML = ledgerHtml(rows);
+    target.classList.remove("hidden");
+  } catch (error) {
+    $("status").textContent = error.message;
+  }
+}
+
 function renderResult(result, runId = null, chainCost = null) {
   currentRunId = runId || currentRunId;
   $("runId").textContent = currentRunId ? `run ${currentRunId.slice(0, 8)}` : "";
   $("downloadRun").classList.toggle("hidden", !currentRunId);
+  $("showLedger").classList.toggle("hidden", !currentRunId);
+  $("ledgerBody").classList.add("hidden");
 
   // Each delegate's own stated position, above the synthesis, whatever the Arbiter wrote.
   const positions = positionsHtml(result.positions);
@@ -670,9 +765,12 @@ $("refreshHistory").addEventListener("click", loadHistory);
 $("analyzeButton").addEventListener("click", analyze);
 $("runButton").addEventListener("click", deliberate);
 $("downloadRun").addEventListener("click", downloadCurrentRun);
+$("showLedger").addEventListener("click", showLedger);
+$("cancelRun").addEventListener("click", cancelFollowedRun);
+$("refreshDashboard").addEventListener("click", loadDashboard);
 $("retryCritic").addEventListener("click", event => retryStage("critic", event.currentTarget));
 $("retryArbiter").addEventListener("click", event => retryStage("arbiter", event.currentTarget));
 
-Promise.all([loadHealth(), loadProviders(), loadWorkspaces()]).catch(error => {
+Promise.all([loadHealth(), loadProviders(), loadWorkspaces(), loadDashboard()]).catch(error => {
   $("status").textContent = error.message;
 });

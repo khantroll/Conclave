@@ -99,15 +99,34 @@
     </aside>
 
     <section class="content">
+      <section class="panel" id="dashboardPanel">
+        <div class="row">
+          <h2>Dashboard</h2>
+          <button id="refreshDashboard" class="secondary">Refresh</button>
+        </div>
+        <p id="dashboardSummary" class="muted-block"></p>
+        <div id="providerStatus"></div>
+      </section>
+
       <section class="panel ask">
         <div class="row">
           <h2>Ask the Conclave</h2>
           <span id="complexity" class="badge muted"></span>
         </div>
         <textarea id="question" rows="7" placeholder="What do you want the panel to consider?"></textarea>
+        <details class="prompt-details" id="runOptions">
+          <summary>Run options (all optional)</summary>
+          <label>Cost ceiling in USD <small>estimate-based; refuses calls that could exceed it; leave empty for none</small>
+            <input id="optCostCeiling" type="number" min="0" step="0.01" placeholder="none">
+          </label>
+          <label class="checkbox-row"><input id="optSharedDeadline" type="checkbox"> Critic and Arbiter fallbacks share one timeout</label>
+          <label class="checkbox-row"><input id="optUseReserves" type="checkbox"> Use the workspace's unselected delegates as reserves if the quorum is unmet</label>
+          <label class="checkbox-row"><input id="optBackground" type="checkbox"> Run in the background (shows progress, can be cancelled)</label>
+        </details>
         <div class="row">
           <button id="analyzeButton" class="secondary">Analyze request</button>
           <button id="runButton">Deliberate</button>
+          <button id="cancelRun" class="danger hidden">Cancel run</button>
         </div>
         <p id="status" class="status"></p>
         <p id="costSummary" class="muted-block"></p>
@@ -125,8 +144,10 @@
           <div class="row">
             <span id="runId" class="badge muted"></span>
             <button id="downloadRun" class="secondary hidden">Download run JSON</button>
+            <button id="showLedger" class="secondary hidden">Call ledger</button>
           </div>
         </div>
+        <div id="ledgerBody" class="hidden"></div>
         <p id="singleSourceBanner" class="warning hidden"></p>
         <p id="judgeOverlapNotice" class="warning hidden"></p>
         <p id="sourceSummary" class="muted-block"></p>

@@ -236,13 +236,16 @@ summary { cursor: pointer; font-weight: 700; }
   font-size: .85rem;
   color: #9fb0c8;
 }
-table.positions {
+table.positions,
+table.data {
   width: 100%;
   border-collapse: collapse;
   font-size: .9rem;
 }
 table.positions th,
-table.positions td {
+table.positions td,
+table.data th,
+table.data td {
   text-align: left;
   vertical-align: top;
   padding: .35rem .5rem;
