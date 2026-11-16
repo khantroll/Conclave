@@ -60,3 +60,7 @@ Billing reconciliation is still unverified. Compare the Groq, OpenRouter, Gemini
 ## Four opt-in run controls (branch `feat/cost-ceiling-deadlines-reserves`)
 
 Built on the owner's instruction (2026-11-15), all off by default: per-run estimated cost ceiling that fails closed (`src/conclave/budget.py`), shared stage deadline, reserve delegates (one replacement wave), and background runs with cancel. Documented in `docs/CONFIGURATION.md` ("Optional run controls"). A Codex plan review (findings applied) and a Codex completion review (no material findings) ran. Full suite exited 0; ruff clean. Not tried against real providers; the console offers background mode as a run option. The live app on port 8000 still runs the previous code until restarted.
+
+## Release candidate (2026-11-15)
+
+Branch `release/v1.0-rc` (PR #45) holds `1.0.0rc1`. The resume point is `docs/V1-RELEASE-STATUS.md`: every criterion with its evidence, the known limits and the release checklist. Live acceptance is `docs/ACCEPTANCE-2026-11-15.md`. Open for the owner: merge #45, close #43 and #44 (contained in it) and the stale #2 and #3, set `1.0.0` and tag, optionally reconcile billing, choose a license.
