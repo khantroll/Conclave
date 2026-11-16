@@ -610,3 +610,81 @@ async def test_a_shared_stage_deadline_stops_the_chain_when_the_budget_is_spent(
     assert result.arbiter.name == "arb1"
     assert result.arbiter.status == DelegateStatus.TIMED_OUT
     assert result.arbiter.prior_attempts == []
+
+
+class _Counting(FakeProvider):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.calls = 0
+
+    async def ask(self, prompt):
+        self.calls += 1
+        return await super().ask(prompt)
+
+
+def _reserve_request(**kwargs):
+    from conclave.models import DeliberationRequest
+
+    base = dict(
+        question="q",
+        delegates=["a", "b"],
+        arbiter="arb",
+        minimum_successes=2,
+        reserve_delegates=["r1", "r2"],
+    )
+    base.update(kwargs)
+    return DeliberationRequest(**base)
+
+
+def _reserve_providers():
+    return {
+        "a": _Counting("answer a", model="ma"),
+        "b": _Counting(error=RuntimeError("down")),
+        "r1": _Counting("answer r1", model="m1"),
+        "r2": _Counting("answer r2", model="m2"),
+        "arb": FakeProvider("final"),
+    }
+
+
+async def test_one_reserve_replaces_a_missing_source_and_is_marked():
+    providers = _reserve_providers()
+    result = await Orchestrator(providers).deliberate(_reserve_request())
+    names = [r.name for r in result.panel.delegates]
+    assert names == ["a", "b", "r1"]
+    assert [r.reserve for r in result.panel.delegates] == [False, False, True]
+    assert result.panel.quorum.status == "met"
+    assert providers["r2"].calls == 0  # bounded to the sources actually missing
+    assert result.panel.delegates[1].status == DelegateStatus.FAILED  # the failure is kept
+
+
+async def test_reserves_are_not_called_when_the_quorum_is_met():
+    providers = _reserve_providers()
+    providers["b"] = _Counting("answer b", model="mb")
+    result = await Orchestrator(providers).deliberate(_reserve_request())
+    assert providers["r1"].calls == 0 and providers["r2"].calls == 0
+    assert all(not r.reserve for r in result.panel.delegates)
+
+
+async def test_the_wave_is_single_and_an_unmet_quorum_still_stops_clearly():
+    providers = _reserve_providers()
+    providers["r1"] = _Counting(error=RuntimeError("also down"))
+    result = await Orchestrator(providers).deliberate(_reserve_request())
+    assert providers["r2"].calls == 0  # one wave only
+    assert result.panel.quorum.status == "unmet"
+    assert result.arbiter is None
+    assert [r.name for r in result.panel.delegates] == ["a", "b", "r1"]
+
+
+async def test_a_reserve_that_is_the_same_model_as_an_answer_is_skipped():
+    from conclave.sources import ProviderIdentity
+
+    providers = _reserve_providers()
+    same = ProviderIdentity(base_url="https://x/v1", model="shared")
+    identities = {
+        "a": same,
+        "r1": same,
+        "r2": ProviderIdentity(base_url="https://y/v1", model="other"),
+    }
+    result = await Orchestrator(providers, identities).deliberate(_reserve_request())
+    assert providers["r1"].calls == 0
+    assert [r.name for r in result.panel.delegates] == ["a", "b", "r2"]

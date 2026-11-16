@@ -735,3 +735,28 @@ def test_workspace_with_two_delegates_of_one_config_saves_with_a_warning(tmp_pat
     assert replaced["warnings"] == []
     clean = _post(client, "/api/workspaces", {**body, "name": "w2", "delegates": ["one", "three"]}, 201)
     assert clean.json()["warnings"] == []
+
+
+def test_reserve_delegates_are_validated(client):
+    base = {"question": "q", "delegates": ["demo-a"], "arbiter": "demo-arbiter"}
+    dup = client.post("/api/deliberate", json={**base, "reserve_delegates": ["demo-a"]})
+    assert dup.status_code == 422 and "already on the panel" in dup.json()["detail"]
+    unknown = client.post("/api/deliberate", json={**base, "reserve_delegates": ["nope"]})
+    assert unknown.status_code == 422 and "Unknown provider" in unknown.json()["detail"]
+    twice = client.post("/api/deliberate", json={**base, "reserve_delegates": ["demo-b", "demo-b"]})
+    assert twice.status_code == 422
+
+
+def test_reserves_are_recorded_with_the_run_request(client):
+    body = {
+        "question": "q",
+        "delegates": ["demo-a"],
+        "arbiter": "demo-arbiter",
+        "reserve_delegates": ["demo-b"],
+        "shared_stage_deadline": True,
+    }
+    response = client.post("/api/deliberate", json=body)
+    assert response.status_code == 200
+    run = client.get(f"/api/runs/{response.headers['X-Conclave-Run-ID']}").json()
+    assert run["request"]["reserve_delegates"] == ["demo-b"]
+    assert run["request"]["shared_stage_deadline"] is True

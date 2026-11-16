@@ -333,6 +333,8 @@ class Orchestrator:
                 await on_stage(self._result(partial, seed=request.seed))
 
         panel = await self.run_panel(panel_request, on_interrupt=keep_partial_panel)
+        if request.reserve_delegates and panel.quorum is not None and panel.quorum.status != "met":
+            panel = await self._reserve_wave(request, panel, on_stage=on_stage)
 
         after_panel = self._result(panel, seed=request.seed)
         if on_stage is not None:
@@ -342,6 +344,78 @@ class Orchestrator:
         return await self._downstream(
             request=request, panel=panel, critic=None, rerun_critic=True, on_stage=on_stage
         )
+
+    async def _reserve_wave(
+        self,
+        request: DeliberationRequest,
+        panel: PanelResult,
+        *,
+        on_stage: StageCallback | None = None,
+    ) -> PanelResult:
+        """One bounded replacement wave when the panel fell short of the quorum.
+
+        At most as many reserves as independent sources are missing are called, together, once.
+        A reserve that is the same configured model as an answer already in hand could not add
+        a source, so it is skipped. Every answer already received is kept and nothing is
+        re-run. Whether the quorum is now met is judged exactly as for any panel.
+        """
+        assert panel.quorum is not None
+        missing = max(panel.quorum.required - panel.quorum.qualifying_sources, 0)
+        held = {
+            ident.config_key
+            for r in panel.delegates
+            if r.status == DelegateStatus.SUCCEEDED
+            and (ident := identity_of(r, self._identities)) is not None
+        }
+        used = {r.name for r in panel.delegates}
+        chosen: list[str] = []
+        for name in request.reserve_delegates:
+            if len(chosen) >= missing:
+                break
+            if name in used or name in chosen:
+                continue
+            ident = self._identities.get(name)
+            if ident is not None:
+                if ident.config_key in held:
+                    continue
+                held.add(ident.config_key)
+            chosen.append(name)
+        if not chosen:
+            return panel
+
+        wave_request = PanelRequest(
+            question=request.question,
+            delegates=[
+                DelegateRequest(
+                    name=name,
+                    prompt=build_delegate_prompt(
+                        question=request.question,
+                        role=request.roles.get(name),
+                        workspace_context=request.workspace_context,
+                    ),
+                    timeout_seconds=request.timeout_seconds,
+                )
+                for name in chosen
+            ],
+            minimum_successes=request.minimum_successes,
+            allow_single_source=request.allow_single_source,
+        )
+
+        def combined(wave: list[DelegateResult]) -> PanelResult:
+            marked = [r.model_copy(update={"reserve": True}) for r in wave]
+            return self._panel_result(
+                question=request.question,
+                delegates=[*panel.delegates, *marked],
+                minimum_successes=request.minimum_successes,
+                allow_single_source=request.allow_single_source,
+            )
+
+        async def keep_partial_wave(kept: list[DelegateResult]) -> None:
+            if on_stage is not None:
+                await on_stage(self._result(combined(kept), seed=request.seed))
+
+        wave = await self.run_panel(wave_request, on_interrupt=keep_partial_wave)
+        return combined(wave.delegates)
 
     async def _downstream(
         self,

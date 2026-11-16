@@ -301,6 +301,7 @@ def create_app(
             arbiter=request.arbiter,
             arbiter_fallbacks=request.arbiter_fallbacks,
             provider_names=orchestrator.provider_names,
+            reserves=request.reserve_delegates,
         )
         plan = plan_or_422(
             selected=request.delegates,
@@ -516,6 +517,11 @@ def create_app(
             critic_timeout_seconds=request.critic_timeout_seconds,
             arbiter_timeout_seconds=request.arbiter_timeout_seconds,
             shared_stage_deadline=request.shared_stage_deadline,
+            reserve_delegates=(
+                [n for n in workspace.delegates if n not in delegates and is_eligible(n)]
+                if request.use_reserves
+                else []
+            ),
         )
         return await _deliberate_and_store(
             request=deliberation, workspace_id=workspace.id, response=response
@@ -689,8 +695,18 @@ def _validate_participants(
     arbiter: str | None,
     arbiter_fallbacks: list[str],
     provider_names: list[str],
+    reserves: list[str] | None = None,
 ) -> None:
     """Names must be unique and known, and fallbacks must not repeat their primary."""
+    reserves = reserves or []
+    if len(set(reserves)) != len(reserves):
+        raise HTTPException(status_code=422, detail="Reserve delegates must be unique")
+    overlap = sorted(set(reserves) & set(delegates))
+    if overlap:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Reserve delegate(s) already on the panel: {', '.join(overlap)}",
+        )
     if len(set(delegates)) != len(delegates):
         raise HTTPException(status_code=422, detail="Delegates must be unique")
     unknown_roles = sorted(set(roles) - set(delegates))
@@ -701,7 +717,7 @@ def _validate_participants(
             detail=f"Role configured for non-delegate provider(s): {names}",
         )
     known = set(provider_names)
-    missing = [name for name in delegates if name not in known]
+    missing = [name for name in [*delegates, *reserves] if name not in known]
     if critic and critic not in known:
         missing.append(critic)
     missing.extend(name for name in critic_fallbacks if name not in known)

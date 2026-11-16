@@ -107,6 +107,9 @@ class DelegateResult(BaseModel):
     prior_attempts: list[PriorAttempt] = Field(default_factory=list)
     # The provider as configured when this answer was produced (None on older results).
     provenance: ProviderProvenance | None = None
+    # True for a reserve delegate: one called in the single replacement wave because the
+    # first panel fell short of the quorum.
+    reserve: bool = False
 
 
 class QuorumReport(BaseModel):
@@ -237,6 +240,9 @@ class DeliberationRequest(BaseModel):
     # Off by default: each fallback provider gets its own full timeout. When on, a Critic or
     # Arbiter stage (primary plus fallbacks) shares one budget of that stage's timeout.
     shared_stage_deadline: bool = False
+    # Providers held back for one bounded replacement wave. Used only if the first panel
+    # leaves the quorum unmet; never more than one wave, never more than the sources missing.
+    reserve_delegates: list[str] = Field(default_factory=list)
     # Random per-run seed. Marker tokens in judge prompts derive from it, and every retry
     # in a chain reuses it, so stored runs rebuild their prompts byte for byte.
     seed: str | None = None
@@ -317,6 +323,8 @@ class WorkspaceDeliberationRequest(BaseModel):
     critic_timeout_seconds: float = Field(default=60.0, gt=0)
     arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
     shared_stage_deadline: bool = False
+    # Use the workspace's delegates that were not picked for this run as reserves.
+    use_reserves: bool = False
 
 
 class DeliberationRun(BaseModel):
