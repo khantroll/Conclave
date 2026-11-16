@@ -45,7 +45,7 @@ Question: pay down a 6.5% mortgage or invest $50,000 in an index fund. Six deleg
 
 ## 5. The web console in a real browser
 
-`scripts/acceptance/ui_test.py` drives headless Edge through the DevTools protocol against the running app:
+`scripts/acceptance/browser_check.py` drives headless Edge through the DevTools protocol against the running app:
 
 - The dashboard rendered 12 providers and the 7-day cost line ("Estimates are not invoices").
 - A workspace was created through the form and appeared in the selector.
