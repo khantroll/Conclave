@@ -15,12 +15,12 @@ Questions where unaided reasoning is error-prone (combinatorics, big-number reca
 | Panel Arbiter | 40/48 correct, 5 wrong, 3 failed (no Arbiter answer) |
 | groq | 44/48 |
 | qwen-flash | 34/42 (6 failed calls) |
-| deepseek-v3 | 33/48 |
+| deepseek-v3 | 36/48 |
 | nemo | 1/47 |
 
 ## Where the panel lost
 
-- **S13** (cryptarithm TWO+TWO=FOUR): the Arbiter failed all three times because qwen-flash returned a malformed result (the Arbiter stage reported `failed`, not a wrong answer). The remaining members disagreed (groq 4, deepseek-v3 1/6, none 7).
+- **S13** (cryptarithm TWO+TWO=FOUR): the Arbiter failed all three times because qwen-flash returned a malformed result (the Arbiter stage reported `failed`, not a wrong answer). The remaining members disagreed on pass 1 (groq 4, deepseek-v3 1, nemo 8); groq then gave 7 on passes 2 and 3, deepseek-v3 gave 1 and 6, nemo 8 each time.
 - **S16** (SQLite expression row): wrong on all three passes. qwen-flash, the Arbiter, treated `||` as binding after `+`, giving `a2` and `1` for the last field. groq was also wrong each time, so there was no correct dissent to preserve.
 - **S9, pass 2**: `0 6 7 8` instead of `0 5 6 7`, copied from qwen-flash.
 - **S12, pass 3**: last value `True` instead of `False`, copied from qwen-flash.

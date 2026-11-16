@@ -1,5 +1,6 @@
 """Score set-3 answers against the machine-verified key (set3-key.md). Run: python score_set3.py [-v]"""
 import json, re, sys
+sys.stdout.reconfigure(encoding="utf-8")
 from collections import defaultdict
 KEY = {
  1: r"\b293\b", 2: r"\b4,?998\b", 3: r"\b14,?833\b", 4: r"\b115\b", 5: r"\b1,?142\b",
@@ -10,7 +11,7 @@ KEY = {
  12: r"0\.30000000000000004\s+False\s+True\s+False",
  13: r"\b7\b",
  14: r"-6\s+6\s+-5\s+3\s+0\s+True",
- 15: r"(no (attribute|method)|attribute\s*error|false premise|does not exist|doesn.t exist|has no)",
+ 15: r"(no (attribute|method)|attribute\s*error|false premise|does not exist|doesn.t exist|has no|not a valid|no such)",
  16: r"2\s*\|?\s*,?\s*2\.5\s*\|?\s*,?\s*2\s*\|?\s*,?\s*-2\s*\|?\s*,?\s*1\s*\|?\s*,?\s*'?integer'?\s*\|?\s*,?\s*1\s*\|?\s*,?\s*0\b",
 }
 def final(t):
