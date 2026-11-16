@@ -43,6 +43,6 @@ Three kinds of cost, never mixed:
 | P0, P1-1 to P1-12, P1-14 | Implemented and merged; covered by the suite and the mock benchmark. |
 | P1-13 Critic default | Interim explicit-choice rule implemented; benchmark run to completion on three judges (all sets "default off"); a stronger judge and the prompt change are still to do. **Partial.** |
 | P1-15 real-provider acceptance | Partly passed (above). Billing reconciliation **blocked** on provider dashboards. |
-| Panel versus one model | Not measured. **Deferred** (P2-1). |
+| Panel versus one model | Not measured. Two screenings on 2026-11-15 (Fable vs a four-source panel): an easy 10-question set hit the ceiling; a verified 13-question set (`bench/panel/HARD-RESULTS.md`) showed the panel at 24/26, equal to Fable and above each cheap member (20 to 22 of 26, one member 3 of 26), with Fable also at the best possible score. A tie with the strongest model, not a win. A third set of 16 verifiable questions (`bench/panel/SET3-RESULTS.md`) put Fable at 48/48 over three runs and the panel Arbiter at 40/48 (3 Arbiter failures, 5 wrong), so the panel did worse than the strongest model there; no decision. **Deferred** (P2-1). |
 | Spending ceiling, shared stage deadline, run-progress polling, router evaluation | **Deferred** (P2). |
 | Release readiness | **Not complete**: missing the benchmark, billing reconciliation and the panel-versus-one measurement. |
