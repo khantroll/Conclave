@@ -7,6 +7,15 @@ from contextlib import contextmanager
 from collections.abc import Awaitable, Callable, Mapping
 from time import perf_counter
 
+from .budget import (
+    unboundable,
+    CEILING_ERROR_KIND,
+    CostGuard,
+    current_guard,
+    reset_guard,
+    use_guard,
+    worst_case_cost,
+)
 from .models import (
     DeliberationRequest,
     DeliberationResult,
@@ -105,6 +114,10 @@ class Orchestrator:
             distinct_families=len(set(families.values())) if families else None,
         )
 
+    def unboundable(self, names: list[str]) -> list[str]:
+        """Participants whose cost cannot be bounded, so a cost ceiling cannot cover them."""
+        return unboundable(self._providers, names)
+
     @property
     def provider_names(self) -> list[str]:
         return sorted(self._providers)
@@ -197,8 +210,13 @@ class Orchestrator:
         }
         ledger = current_ledger()
         cost = ledger.totals() if ledger is not None else None
+        refused = any(
+            r is not None and r.error_kind == CEILING_ERROR_KIND
+            for r in [*panel.delegates, critic, arbiter]
+        )
         return DeliberationResult(
             schema_version=RESULT_SCHEMA_VERSION,
+            stopped_reason="cost_ceiling" if refused else None,
             panel=panel,
             critic=critic,
             arbiter=arbiter,
@@ -229,16 +247,18 @@ class Orchestrator:
         )
 
     @contextmanager
-    def _ledger_for(self, call_context: CallContext | None):
+    def _ledger_for(self, call_context: CallContext | None, ceiling_usd: float | None = None):
         """Make a ledger active for one operation, so every call it makes is recorded."""
         context = call_context or CallContext()
         ledger = RunLedger(
             run_id=context.run_id, chain_root_id=context.chain_root_id, sink=self.ledger_sink
         )
         token = use_ledger(ledger)
+        guard_token = use_guard(CostGuard(ceiling_usd) if ceiling_usd is not None else None)
         try:
             yield ledger
         finally:
+            reset_guard(guard_token)
             reset_ledger(token)
 
     async def deliberate(
@@ -248,7 +268,7 @@ class Orchestrator:
         on_stage: StageCallback | None = None,
         call_context: CallContext | None = None,
     ) -> DeliberationResult:
-        with self._ledger_for(call_context):
+        with self._ledger_for(call_context, request.max_estimated_cost_usd):
             return await self._deliberate(request, on_stage=on_stage)
 
     async def retry_delegate(
@@ -260,7 +280,7 @@ class Orchestrator:
         call_context: CallContext | None = None,
         on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
-        with self._ledger_for(call_context):
+        with self._ledger_for(call_context, request.max_estimated_cost_usd):
             return await self._retry_delegate(
                 request=request,
                 prior_result=prior_result,
@@ -276,7 +296,7 @@ class Orchestrator:
         call_context: CallContext | None = None,
         on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
-        with self._ledger_for(call_context):
+        with self._ledger_for(call_context, request.max_estimated_cost_usd):
             return await self._retry_critic(
                 request=request, prior_result=prior_result, on_stage=on_stage
             )
@@ -289,7 +309,7 @@ class Orchestrator:
         call_context: CallContext | None = None,
         on_stage: StageCallback | None = None,
     ) -> DeliberationResult:
-        with self._ledger_for(call_context):
+        with self._ledger_for(call_context, request.max_estimated_cost_usd):
             return await self._retry_arbiter(
                 request=request, prior_result=prior_result, on_stage=on_stage
             )
@@ -333,6 +353,8 @@ class Orchestrator:
                 await on_stage(self._result(partial, seed=request.seed))
 
         panel = await self.run_panel(panel_request, on_interrupt=keep_partial_panel)
+        if request.reserve_delegates and panel.quorum is not None and panel.quorum.status != "met":
+            panel = await self._reserve_wave(request, panel, on_stage=on_stage)
 
         after_panel = self._result(panel, seed=request.seed)
         if on_stage is not None:
@@ -342,6 +364,78 @@ class Orchestrator:
         return await self._downstream(
             request=request, panel=panel, critic=None, rerun_critic=True, on_stage=on_stage
         )
+
+    async def _reserve_wave(
+        self,
+        request: DeliberationRequest,
+        panel: PanelResult,
+        *,
+        on_stage: StageCallback | None = None,
+    ) -> PanelResult:
+        """One bounded replacement wave when the panel fell short of the quorum.
+
+        At most as many reserves as independent sources are missing are called, together, once.
+        A reserve that is the same configured model as an answer already in hand could not add
+        a source, so it is skipped. Every answer already received is kept and nothing is
+        re-run. Whether the quorum is now met is judged exactly as for any panel.
+        """
+        assert panel.quorum is not None
+        missing = max(panel.quorum.required - panel.quorum.qualifying_sources, 0)
+        held = {
+            ident.config_key
+            for r in panel.delegates
+            if r.status == DelegateStatus.SUCCEEDED
+            and (ident := identity_of(r, self._identities)) is not None
+        }
+        used = {r.name for r in panel.delegates}
+        chosen: list[str] = []
+        for name in request.reserve_delegates:
+            if len(chosen) >= missing:
+                break
+            if name in used or name in chosen:
+                continue
+            ident = self._identities.get(name)
+            if ident is not None:
+                if ident.config_key in held:
+                    continue
+                held.add(ident.config_key)
+            chosen.append(name)
+        if not chosen:
+            return panel
+
+        wave_request = PanelRequest(
+            question=request.question,
+            delegates=[
+                DelegateRequest(
+                    name=name,
+                    prompt=build_delegate_prompt(
+                        question=request.question,
+                        role=request.roles.get(name),
+                        workspace_context=request.workspace_context,
+                    ),
+                    timeout_seconds=request.timeout_seconds,
+                )
+                for name in chosen
+            ],
+            minimum_successes=request.minimum_successes,
+            allow_single_source=request.allow_single_source,
+        )
+
+        def combined(wave: list[DelegateResult]) -> PanelResult:
+            marked = [r.model_copy(update={"reserve": True}) for r in wave]
+            return self._panel_result(
+                question=request.question,
+                delegates=[*panel.delegates, *marked],
+                minimum_successes=request.minimum_successes,
+                allow_single_source=request.allow_single_source,
+            )
+
+        async def keep_partial_wave(kept: list[DelegateResult]) -> None:
+            if on_stage is not None:
+                await on_stage(self._result(combined(kept), seed=request.seed))
+
+        wave = await self.run_panel(wave_request, on_interrupt=keep_partial_wave)
+        return combined(wave.delegates)
 
     async def _downstream(
         self,
@@ -379,6 +473,7 @@ class Orchestrator:
                     workspace_context=request.workspace_context,
                 ),
                 timeout_seconds=request.critic_timeout_seconds,
+                shared_deadline=request.shared_stage_deadline,
             )
             if on_stage is not None:
                 await on_stage(self._result(panel, critic=critic, seed=request.seed))
@@ -409,6 +504,7 @@ class Orchestrator:
                     single_source_label=label,
                 ),
                 timeout_seconds=request.arbiter_timeout_seconds,
+                shared_deadline=request.shared_stage_deadline,
             )
             final = self._result(panel, critic=critic, arbiter=arbiter, seed=request.seed)
         if on_stage is not None:
@@ -522,16 +618,31 @@ class Orchestrator:
         fallbacks: list[str],
         prompt: str,
         timeout_seconds: float,
+        shared_deadline: bool = False,
     ) -> DelegateResult:
+        """Try the primary, then each fallback in order, until one answers.
+
+        By default every attempt gets the full ``timeout_seconds``. With ``shared_deadline`` the
+        whole chain shares that one budget: each attempt gets what is left of it, and no further
+        fallback starts once it is spent (the last failure is returned, with its prior attempts).
+        """
         providers = [primary, *fallbacks]
         last_result: DelegateResult | None = None
         prior: list[PriorAttempt] = []
+        loop = asyncio.get_running_loop()
+        stage_deadline = loop.time() + timeout_seconds
         for name in providers:
+            attempt_timeout = timeout_seconds
+            if shared_deadline:
+                attempt_timeout = stage_deadline - loop.time()
+                if attempt_timeout <= 0 and last_result is not None:
+                    break
+                attempt_timeout = max(attempt_timeout, 0.001)
             result = await self._run_delegate(
                 DelegateRequest(
                     name=name,
                     prompt=prompt,
-                    timeout_seconds=timeout_seconds,
+                    timeout_seconds=attempt_timeout,
                 ),
                 stage=stage,
             )
@@ -563,6 +674,31 @@ class Orchestrator:
                 error=f"No provider configured for delegate: {delegate.name}",
             )
 
+        guard = current_guard()
+        bound: float | None = 0.0
+        if guard is not None:
+            bound = worst_case_cost(provider, delegate.prompt)
+            if not guard.admit(bound):
+                return DelegateResult(
+                    name=delegate.name,
+                    status=DelegateStatus.FAILED,
+                    prompt=delegate.prompt,
+                    error=(
+                        "Not called: its cost could not be bounded under the cost ceiling"
+                        if bound is None
+                        else "Not called: it could exceed the run's estimated cost ceiling"
+                    ),
+                    error_kind=CEILING_ERROR_KIND,
+                )
+        try:
+            return await self._run_admitted(delegate, provider, stage)
+        finally:
+            if guard is not None and bound is not None:
+                guard.release(bound)
+
+    async def _run_admitted(
+        self, delegate: DelegateRequest, provider: Provider, stage: str
+    ) -> DelegateResult:
         ledger = current_ledger() or RunLedger(sink=self.ledger_sink)
         identity = self._identities.get(delegate.name)
         scope = CallScope(
