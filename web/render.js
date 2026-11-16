@@ -378,6 +378,15 @@
     return `<table class="data"><thead><tr><th>Stage</th><th>Provider</th><th>Outcome</th><th>Attempt</th><th>Latency</th><th>Tokens in / out</th><th>Estimated</th><th>Provider-reported</th></tr></thead><tbody>${body}</tbody></table>`;
   }
 
+  function stoppedNotice(result) {
+    if (!result || result.stopped_reason !== "cost_ceiling") return "";
+    const refused = ((result.panel && result.panel.delegates) || [])
+      .concat([result.critic, result.arbiter])
+      .filter((x) => x && x.error_kind === "cost_ceiling")
+      .map((x) => x.name);
+    return `STOPPED BY THE COST CEILING: ${refused.length} call(s) were not made (${refused.map(escapeHtml).join(", ")}) because they could exceed the estimated ceiling. Answers already received are kept.`;
+  }
+
   function progressText(run) {
     const result = run && run.result;
     if (!result) return "Starting…";
@@ -396,6 +405,7 @@
     dashboardSummary,
     ledgerHtml,
     progressText,
+    stoppedNotice,
     escapeHtml,
     summarizeQuestion,
     formatCost,
