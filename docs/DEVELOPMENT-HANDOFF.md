@@ -56,3 +56,7 @@ Billing reconciliation is still unverified. Compare the Groq, OpenRouter, Gemini
   - Set 3, 16 questions: Fable 48/48 over three runs; panel Arbiter 40/48 (3 failed Arbiter stages on S13, 5 wrong), groq alone 44/48 (`SET3-RESULTS.md`). The panel did worse than the strongest model here.
   - Conclusion: no evidence yet that a panel beats the strongest model. Panel cost by the ledger for set 3 was about $0.076.
 - Different-Critic benchmark: Critic arm scored -1.9 points; default stays off.
+
+## Four opt-in run controls (branch `feat/cost-ceiling-deadlines-reserves`)
+
+Built on the owner's instruction (2026-11-15), all off by default: per-run estimated cost ceiling that fails closed (`src/conclave/budget.py`), shared stage deadline, reserve delegates (one replacement wave), and background runs with cancel. Documented in `docs/CONFIGURATION.md` ("Optional run controls"). A Codex plan review (findings applied) and a Codex completion review (no material findings) ran. Full suite exited 0; ruff clean. Not tried against real providers; the web console does not use background mode. The live app on port 8000 still runs the previous code until restarted.
