@@ -1,6 +1,6 @@
 # v1.0 release status
 
-Candidate: `1.0.0rc1` on branch `release/v1.0-rc`. Updated 2026-11-15. This file is the resume point for another session. A criterion is PASS only with the evidence named beside it; BLOCKED means something outside the code stops it.
+Released as `1.0.0` (tag `v1.0.0`), from candidate `1.0.0rc1`. Updated 2026-11-16. This file is the resume point for another session. A criterion is PASS only with the evidence named beside it; BLOCKED means something outside the code stops it.
 
 ## Criteria
 
@@ -54,4 +54,4 @@ Candidate: `1.0.0rc1` on branch `release/v1.0-rc`. Updated 2026-11-15. This file
 - [ ] Merge to `main`.
 - [ ] Set the version to `1.0.0` in `pyproject.toml`, `src/conclave/__init__.py` and `src/conclave/api.py` (a test keeps them equal), update `CHANGELOG.md`, and tag `v1.0.0`.
 - [ ] Back up `.env`, `conclave.json`, `conclave.db`, `run_logs/` and update the live checkout.
-- [ ] Choose a license (none selected).
+- [x] License: MIT (2026-11-16). Merged #45; #43, #44, #2 and #3 closed; version set to 1.0.0 and tagged.

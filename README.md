@@ -188,7 +188,7 @@ A failed provider never fails the session, and the Critic and Arbiter are told e
 
 ## Status
 
-**Release candidate `1.0.0rc1`. Not yet merged to the release line or tagged.** The criteria, their evidence and what remains are in [docs/V1-RELEASE-STATUS.md](docs/V1-RELEASE-STATUS.md).
+**Version 1.0.0, released 2026-11-16** (tag `v1.0.0`; release candidate `1.0.0rc1` was accepted on 2026-11-15). The criteria, their evidence and what remains are in [docs/V1-RELEASE-STATUS.md](docs/V1-RELEASE-STATUS.md).
 
 The orchestration, source counting, blinding, structured output, ledger, retry chains and storage described above are implemented and covered by the tests and benchmarks in this repository. What has **not** happened:
 
@@ -215,4 +215,4 @@ The orchestration, source counting, blinding, structured output, ledger, retry c
 
 ## License
 
-No license has been selected yet.
+Released under the [MIT License](LICENSE).
