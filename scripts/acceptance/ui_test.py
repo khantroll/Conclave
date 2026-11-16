@@ -76,8 +76,23 @@ async def main():
         out = {}
         out["dashboard_text"] = await js("document.getElementById('dashboardSummary').textContent")
         out["provider_rows"] = await js("document.querySelectorAll('#providerStatus tbody tr').length")
-        # choose the workspace, type a question, run in the background
-        await js(f"(()=>{{const s=document.getElementById('workspaceSelect');s.value='{wid}';s.dispatchEvent(new Event('change'));}})()")
+        # create a workspace through the form, then use it
+        await js("document.querySelector('#workspaceFormDetails').open=true")
+        for field, value in (
+            ("workspaceName", "Form-made workspace"),
+            ("workspaceDelegates", "groq, qwen-flash, deepseek-v3"),
+            ("workspaceArbiter", "sonnet-46"),
+            ("workspaceSingleSourceMode", "return_answer"),
+            ("workspaceQuorum", "2"),
+        ):
+            await js(f"document.getElementById('{field}').value={json.dumps(value)}")
+        await js("(()=>{const m=document.getElementById('workspaceCriticMode');m.value='none';m.dispatchEvent(new Event('change'));})()")
+        await js("document.getElementById('workspaceSubmit').click()")
+        await asyncio.sleep(2)
+        out["workspace_created_via_form"] = await js(
+            "[...document.querySelectorAll('#workspaceSelect option')].some(o=>o.textContent.includes('Form-made workspace'))"
+        )
+        await js("(()=>{const s=document.getElementById('workspaceSelect');const o=[...s.options].find(o=>o.textContent.includes('Form-made workspace'));s.value=o.value;s.dispatchEvent(new Event('change'));})()")
         await asyncio.sleep(1)
         await js("document.getElementById('question').value='Name one advantage and one risk of microservices, in two sentences.'")
         await js("document.getElementById('optBackground').checked=true; document.getElementById('optCostCeiling').value='0.05'")

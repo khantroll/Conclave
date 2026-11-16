@@ -854,3 +854,17 @@ def test_dashboard_has_recent_runs_cost_and_background_list(client):
     dash = client.get("/api/dashboard").json()
     assert len(dash["recent_runs"]) == 1 and dash["running_in_background"] == []
     assert dash["cost_last_7_days"]["total_calls"] >= 1
+
+
+def test_the_version_is_the_same_everywhere():
+    import tomllib
+    from pathlib import Path
+
+    import conclave
+    from conclave.api import create_app
+    from conclave.config import ConclaveConfig
+    from conclave.store import WorkspaceStore  # noqa: F401
+
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text("utf-8"))
+    app = create_app(config=ConclaveConfig(), workspace_store=WorkspaceStore(Path("v.db")))
+    assert conclave.__version__ == pyproject["project"]["version"] == app.version

@@ -66,7 +66,7 @@ def create_app(
     """
     app = FastAPI(
         title="Conclave",
-        version="0.1.0",
+        version="1.0.0rc1",
         description="Deterministic multi-model deliberation and synthesis.",
     )
 
