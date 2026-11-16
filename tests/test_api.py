@@ -760,3 +760,17 @@ def test_reserves_are_recorded_with_the_run_request(client):
     run = client.get(f"/api/runs/{response.headers['X-Conclave-Run-ID']}").json()
     assert run["request"]["reserve_delegates"] == ["demo-b"]
     assert run["request"]["shared_stage_deadline"] is True
+
+
+def test_a_cost_ceiling_is_refused_up_front_when_a_cost_cannot_be_bounded(client):
+    body = {
+        "question": "q",
+        "delegates": ["demo-a"],
+        "arbiter": "demo-arbiter",
+        "max_estimated_cost_usd": 1.0,
+    }
+    response = client.post("/api/deliberate", json=body)
+    assert response.status_code == 422
+    assert "demo-a" in response.json()["detail"] and "Cannot bound" in response.json()["detail"]
+    assert client.get("/api/runs").json() == []  # nothing was started
+    assert client.post("/api/deliberate", json={**body, "max_estimated_cost_usd": 0}).status_code == 422

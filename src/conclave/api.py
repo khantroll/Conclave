@@ -175,12 +175,28 @@ def create_app(
     # Every provider request, from any endpoint, is recorded in the call ledger as it happens.
     orchestrator.ledger_sink = store.record_call
 
+    def _require_boundable(request: DeliberationRequest) -> None:
+        """With a cost ceiling, every participant must have a cost that can be bounded."""
+        if request.max_estimated_cost_usd is None:
+            return
+        bad = orchestrator.unboundable(_participants_of(request))
+        if bad:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "A cost ceiling needs a known cost for every participant (input price, "
+                    "output price, max_output_tokens and transient_max_retries). Cannot bound: "
+                    + ", ".join(bad)
+                ),
+            )
+
     async def _deliberate_and_store(
         *,
         request: DeliberationRequest,
         workspace_id: str | None,
         response: Response,
     ) -> DeliberationResult:
+        _require_boundable(request)
         if request.seed is None:
             request = request.model_copy(update={"seed": secrets.token_hex(16)})
         # The row exists before any provider is called, and is updated after
@@ -517,6 +533,7 @@ def create_app(
             critic_timeout_seconds=request.critic_timeout_seconds,
             arbiter_timeout_seconds=request.arbiter_timeout_seconds,
             shared_stage_deadline=request.shared_stage_deadline,
+            max_estimated_cost_usd=request.max_estimated_cost_usd,
             reserve_delegates=(
                 [n for n in workspace.delegates if n not in delegates and is_eligible(n)]
                 if request.use_reserves
@@ -739,6 +756,18 @@ def _validate_participants(
     if missing:
         names = ", ".join(sorted(set(missing)))
         raise HTTPException(status_code=422, detail=f"Unknown provider(s): {names}")
+
+
+def _participants_of(request: DeliberationRequest) -> list[str]:
+    names = [
+        *request.delegates,
+        *request.reserve_delegates,
+        request.arbiter,
+        *request.arbiter_fallbacks,
+    ]
+    if request.critic:
+        names += [request.critic, *request.critic_fallbacks]
+    return names
 
 
 def _validate_quorum(minimum_successes: int, delegate_count: int) -> None:
