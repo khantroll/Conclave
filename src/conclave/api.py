@@ -515,6 +515,7 @@ def create_app(
             timeout_seconds=request.timeout_seconds,
             critic_timeout_seconds=request.critic_timeout_seconds,
             arbiter_timeout_seconds=request.arbiter_timeout_seconds,
+            shared_stage_deadline=request.shared_stage_deadline,
         )
         return await _deliberate_and_store(
             request=deliberation, workspace_id=workspace.id, response=response

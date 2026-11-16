@@ -379,6 +379,7 @@ class Orchestrator:
                     workspace_context=request.workspace_context,
                 ),
                 timeout_seconds=request.critic_timeout_seconds,
+                shared_deadline=request.shared_stage_deadline,
             )
             if on_stage is not None:
                 await on_stage(self._result(panel, critic=critic, seed=request.seed))
@@ -409,6 +410,7 @@ class Orchestrator:
                     single_source_label=label,
                 ),
                 timeout_seconds=request.arbiter_timeout_seconds,
+                shared_deadline=request.shared_stage_deadline,
             )
             final = self._result(panel, critic=critic, arbiter=arbiter, seed=request.seed)
         if on_stage is not None:
@@ -522,16 +524,31 @@ class Orchestrator:
         fallbacks: list[str],
         prompt: str,
         timeout_seconds: float,
+        shared_deadline: bool = False,
     ) -> DelegateResult:
+        """Try the primary, then each fallback in order, until one answers.
+
+        By default every attempt gets the full ``timeout_seconds``. With ``shared_deadline`` the
+        whole chain shares that one budget: each attempt gets what is left of it, and no further
+        fallback starts once it is spent (the last failure is returned, with its prior attempts).
+        """
         providers = [primary, *fallbacks]
         last_result: DelegateResult | None = None
         prior: list[PriorAttempt] = []
+        loop = asyncio.get_running_loop()
+        stage_deadline = loop.time() + timeout_seconds
         for name in providers:
+            attempt_timeout = timeout_seconds
+            if shared_deadline:
+                attempt_timeout = stage_deadline - loop.time()
+                if attempt_timeout <= 0 and last_result is not None:
+                    break
+                attempt_timeout = max(attempt_timeout, 0.001)
             result = await self._run_delegate(
                 DelegateRequest(
                     name=name,
                     prompt=prompt,
-                    timeout_seconds=timeout_seconds,
+                    timeout_seconds=attempt_timeout,
                 ),
                 stage=stage,
             )

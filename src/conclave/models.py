@@ -234,6 +234,9 @@ class DeliberationRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
     critic_timeout_seconds: float = Field(default=60.0, gt=0)
     arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
+    # Off by default: each fallback provider gets its own full timeout. When on, a Critic or
+    # Arbiter stage (primary plus fallbacks) shares one budget of that stage's timeout.
+    shared_stage_deadline: bool = False
     # Random per-run seed. Marker tokens in judge prompts derive from it, and every retry
     # in a chain reuses it, so stored runs rebuild their prompts byte for byte.
     seed: str | None = None
@@ -313,6 +316,7 @@ class WorkspaceDeliberationRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
     critic_timeout_seconds: float = Field(default=60.0, gt=0)
     arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
+    shared_stage_deadline: bool = False
 
 
 class DeliberationRun(BaseModel):

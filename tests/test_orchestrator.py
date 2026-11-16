@@ -573,3 +573,40 @@ async def test_retrying_a_delegate_recounts_sources():
     assert retried.panel.independent_source_count == 1
     assert retried.panel.synthesizeable is False
     assert retried.arbiter is None
+
+
+async def _chain(shared: bool):
+    from conclave.models import DeliberationRequest
+
+    orchestrator = Orchestrator(
+        {
+            "d": FakeProvider("answer"),
+            "arb1": FakeProvider("slow", delay_seconds=0.3),
+            "arb2": FakeProvider("slower", delay_seconds=0.3),
+            "arb3": FakeProvider("final"),
+        }
+    )
+    request = DeliberationRequest(
+        question="q",
+        delegates=["d"],
+        arbiter="arb1",
+        arbiter_fallbacks=["arb2", "arb3"],
+        arbiter_timeout_seconds=0.2,
+        single_source_mode="arbiter_single_source",
+        shared_stage_deadline=shared,
+    )
+    return await orchestrator.deliberate(request)
+
+
+async def test_each_fallback_gets_a_full_timeout_by_default():
+    result = await _chain(False)
+    assert result.arbiter.name == "arb3"
+    assert [a.name for a in result.arbiter.prior_attempts] == ["arb1", "arb2"]
+
+
+async def test_a_shared_stage_deadline_stops_the_chain_when_the_budget_is_spent():
+    result = await _chain(True)
+    # arb1 consumes the whole 0.2s budget, so no fallback gets to start.
+    assert result.arbiter.name == "arb1"
+    assert result.arbiter.status == DelegateStatus.TIMED_OUT
+    assert result.arbiter.prior_attempts == []
