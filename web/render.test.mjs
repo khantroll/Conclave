@@ -371,3 +371,15 @@ test("progress text reflects the stages saved so far", () => {
   const run = { result: { panel: { delegates: [{ status: "succeeded" }, { status: "failed" }] }, critic: null, arbiter: null } };
   assert.equal(render.progressText(run), "Panel: 1 answered, 1 failed or skipped · Critic pending or not used · Arbiter pending");
 });
+
+test("a cost-ceiling stop is announced and names what was not called, as inert text", () => {
+  assert.equal(render.stoppedNotice({ stopped_reason: null }), "");
+  const text = render.stoppedNotice({
+    stopped_reason: "cost_ceiling",
+    panel: { delegates: [{ name: "<b>x</b>", error_kind: "cost_ceiling" }, { name: "ok", error_kind: null }] },
+    critic: null,
+    arbiter: { name: "arb", error_kind: "cost_ceiling" },
+  });
+  assert.match(text, /STOPPED BY THE COST CEILING: 2 call\(s\)/);
+  assert.doesNotMatch(text, /<b>/);
+});

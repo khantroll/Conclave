@@ -28,6 +28,7 @@ const {
   dashboardSummary,
   ledgerHtml,
   progressText,
+  stoppedNotice,
 } = ConclaveRender;
 
 async function api(path, options = {}) {
@@ -585,6 +586,9 @@ function renderResult(result, runId = null, chainCost = null) {
   // Arbiter prompt all describe the run identically.
   $("singleSourceBanner").textContent = result.single_source_label || "";
   $("costSummary").textContent = costLines(result.cost, chainCost).join("\n");
+  const stopped = stoppedNotice(result);
+  $("stoppedNotice").classList.toggle("hidden", !stopped);
+  $("stoppedNotice").textContent = stopped;
   const summary = sourceSummary(result.panel);
   $("sourceSummary").textContent = summary;
   // Always shown with a result, including runs saved before source counting existed.
