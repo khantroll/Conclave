@@ -19,17 +19,14 @@ It has **not** been run against real providers since 2026-10-09 (see `docs/TEST_
 
 ## Improvements that are not needed for a first release
 
-- A per-run cost ceiling (`max_estimated_cost_usd`) that fails closed when a cost is unknowable. Deliberately a separate change.
-- One shared deadline per stage instead of one per fallback.
-- Returning the run id at once and showing delegate answers while later stages run.
+- Done 2026-11-15 as opt-in options (`docs/CONFIGURATION.md`, "Optional run controls"): a per-run estimated cost ceiling that fails closed, one shared deadline per stage, background runs that return the run id at once, and reserve delegates (one bounded replacement wave). Not yet tried against real providers; the web console does not use background mode.
 - Evaluating the keyword router against hand-labelled past questions.
 - Native provider adapters, and semantic claim extraction.
 
 ## Open decisions (not settled; do not treat as decided)
 
 - **Critic default.** Unmeasured; explicit choice until a complete judge benchmark exists.
-- **Automatic reserve delegates.** Deferred. If built: one bounded replacement wave, keep successful responses, respect a budget, and stop clearly if the quorum is unmet.
-- **Spending cap.** A separate change, not part of the pipeline work.
+- **Automatic reserve delegates and spending cap.** Built 2026-11-15 as explicit opt-in options (see above); whether to turn any on by default is not decided.
 - **Panels versus one model.** Unmeasured.
 - **License.** None selected.
 

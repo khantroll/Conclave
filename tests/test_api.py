@@ -774,3 +774,59 @@ def test_a_cost_ceiling_is_refused_up_front_when_a_cost_cannot_be_bounded(client
     assert "demo-a" in response.json()["detail"] and "Cannot bound" in response.json()["detail"]
     assert client.get("/api/runs").json() == []  # nothing was started
     assert client.post("/api/deliberate", json={**body, "max_estimated_cost_usd": 0}).status_code == 422
+
+
+def _slow(monkeypatch, seconds):
+    import asyncio
+
+    from conclave.providers.fake import FakeProvider
+
+    original = FakeProvider.ask
+
+    async def slow(self, prompt):
+        await asyncio.sleep(seconds)
+        return await original(self, prompt)
+
+    monkeypatch.setattr(FakeProvider, "ask", slow)
+
+
+def _wait_for(client, run_id, status, tries=100):
+    import time
+
+    for _ in range(tries):
+        run = client.get(f"/api/runs/{run_id}").json()
+        if run["status"] == status:
+            return run
+        time.sleep(0.05)
+    raise AssertionError(f"run never reached {status}: {run['status']}")
+
+
+BODY = {"question": "q", "delegates": ["demo-a", "demo-b"], "arbiter": "demo-arbiter"}
+
+
+def test_background_mode_returns_the_run_id_at_once_and_the_run_completes(tmp_path, monkeypatch):
+    _slow(monkeypatch, 0.2)
+    with TestClient(make_app(WorkspaceStore(tmp_path / "bg.db"))) as client:
+        response = client.post("/api/deliberate?background=true", json=BODY)
+        assert response.status_code == 202
+        run_id = response.json()["run_id"]
+        assert response.headers["X-Conclave-Run-ID"] == run_id
+        assert client.get(f"/api/runs/{run_id}").json()["status"] == "running"
+        done = _wait_for(client, run_id, "complete")
+        assert done["result"]["arbiter"]["status"] == "succeeded"
+        assert client.post(f"/api/runs/{run_id}/cancel").status_code == 409  # nothing to stop
+
+
+def test_a_background_run_can_be_cancelled_and_is_marked_interrupted(tmp_path, monkeypatch):
+    _slow(monkeypatch, 5)
+    with TestClient(make_app(WorkspaceStore(tmp_path / "bg2.db"))) as client:
+        run_id = client.post("/api/deliberate?background=true", json=BODY).json()["run_id"]
+        cancelled = client.post(f"/api/runs/{run_id}/cancel")
+        assert cancelled.status_code == 202
+        assert client.get(f"/api/runs/{run_id}").json()["status"] == "interrupted"
+        assert client.post(f"/api/runs/{run_id}/cancel").status_code == 409
+
+
+def test_the_default_still_waits_for_the_whole_run(client):
+    response = client.post("/api/deliberate", json=BODY)
+    assert response.status_code == 200 and response.json()["arbiter"]["status"] == "succeeded"

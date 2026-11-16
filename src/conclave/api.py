@@ -7,7 +7,7 @@ from uuid import uuid4
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .analyzer import analyze_request
@@ -175,6 +175,27 @@ def create_app(
     # Every provider request, from any endpoint, is recorded in the call ledger as it happens.
     orchestrator.ledger_sink = store.record_call
 
+    background_runs: dict[str, asyncio.Task] = {}
+
+    async def _stop_background_runs() -> None:
+        tasks = list(background_runs.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    app.router.add_event_handler("shutdown", _stop_background_runs)
+
+    @app.post("/api/runs/{run_id}/cancel", status_code=202)
+    async def cancel_run(run_id: str) -> dict[str, str]:
+        task = background_runs.get(run_id)
+        if task is None or task.done():
+            raise HTTPException(
+                status_code=409, detail="This run is not running in the background here"
+            )
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        return {"run_id": run_id, "status": "interrupted"}
+
     def _require_boundable(request: DeliberationRequest) -> None:
         """With a cost ceiling, every participant must have a cost that can be bounded."""
         if request.max_estimated_cost_usd is None:
@@ -195,7 +216,8 @@ def create_app(
         request: DeliberationRequest,
         workspace_id: str | None,
         response: Response,
-    ) -> DeliberationResult:
+        background: bool = False,
+    ) -> DeliberationResult | JSONResponse:
         _require_boundable(request)
         if request.seed is None:
             request = request.model_copy(update={"seed": secrets.token_hex(16)})
@@ -211,17 +233,41 @@ def create_app(
         async def on_stage(partial: DeliberationResult) -> None:
             store.update_run(run.id, partial, "running")
 
-        try:
-            result = await orchestrator.deliberate(
-                request,
-                on_stage=on_stage,
-                call_context=CallContext(run_id=run.id, chain_root_id=run.id),
-            )
-        except BaseException:
-            store.mark_interrupted(run.id)
-            raise
-        store.update_run(run.id, result, "complete")
-        return result
+        async def run_to_end() -> DeliberationResult:
+            try:
+                result = await orchestrator.deliberate(
+                    request,
+                    on_stage=on_stage,
+                    call_context=CallContext(run_id=run.id, chain_root_id=run.id),
+                )
+            except BaseException:
+                store.mark_interrupted(run.id)
+                raise
+            store.update_run(run.id, result, "complete")
+            return result
+
+        if not background:
+            return await run_to_end()
+
+        # Background mode: answer at once with the run id. The run keeps saving each stage as it
+        # finishes (delegate answers are readable from GET /api/runs/{id} once the panel stage
+        # is saved) and can be stopped with POST /api/runs/{id}/cancel. One process only: the
+        # task lives in this process, and a restart marks an unfinished run interrupted.
+        task = asyncio.create_task(run_to_end(), name=f"conclave-run-{run.id}")
+        background_runs[run.id] = task
+
+        def forget(done: asyncio.Task) -> None:
+            if background_runs.get(run.id) is done:
+                del background_runs[run.id]
+            if not done.cancelled():
+                done.exception()  # already stored as interrupted; never an unretrieved error
+
+        task.add_done_callback(forget)
+        return JSONResponse(
+            status_code=202,
+            content={"run_id": run.id, "status": "running"},
+            headers={"X-Conclave-Run-ID": run.id},
+        )
 
     @app.get("/health")
     async def health() -> dict[str, str | int | bool]:
@@ -306,6 +352,7 @@ def create_app(
     async def deliberate(
         request: DeliberationRequest,
         response: Response,
+        background: bool = False,
     ) -> DeliberationResult:
         # No bare count check here: plan_delegates() decides whether the quorum is reachable
         # and answers with a structured "quorum unmet" (or a labelled single-source run).
@@ -340,7 +387,7 @@ def create_app(
                 }
             )
         return await _deliberate_and_store(
-            request=request, workspace_id=None, response=response
+            request=request, workspace_id=None, response=response, background=background
         )
 
     @app.post("/api/workspaces", response_model=Workspace, status_code=201)
@@ -466,6 +513,7 @@ def create_app(
         workspace_id: str,
         request: WorkspaceDeliberationRequest,
         response: Response,
+        background: bool = False,
     ) -> DeliberationResult:
         workspace = store.get(workspace_id)
         if workspace is None:
@@ -541,7 +589,10 @@ def create_app(
             ),
         )
         return await _deliberate_and_store(
-            request=deliberation, workspace_id=workspace.id, response=response
+            request=deliberation,
+            workspace_id=workspace.id,
+            response=response,
+            background=background,
         )
 
     async def _retry(run_id: str, error_status: int, call) -> DeliberationRun:
