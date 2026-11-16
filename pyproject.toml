@@ -1,7 +1,9 @@
 [project]
 name = "conclave-ai"
-version = "1.0.0rc1"
+version = "1.0.0"
 description = "Deterministic multi-model deliberation and synthesis."
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

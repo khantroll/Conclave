@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0rc1 (unreleased)
+X
 
 First release candidate. Everything before this was pre-alpha.
 
@@ -16,7 +16,7 @@ First release candidate. Everything before this was pre-alpha.
 - A separate Critic model option in the judge benchmark runner (`--critic`).
 
 ### Changed
-- Version is `1.0.0rc1` in `pyproject.toml`, the package and the API; a test keeps them equal.
+- Version is `1.0.0` in `pyproject.toml`, the package and the API; a test keeps them equal.
 - The judge benchmark is complete on three judge models plus a different-Critic run; the Critic stays off by default.
 
 ### Fixed
