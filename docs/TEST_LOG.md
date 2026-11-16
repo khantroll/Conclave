@@ -132,3 +132,8 @@ Not complete. Outstanding: a run with three providers answering from two named f
 Scenario 1 (all healthy) was repeated with a 150 s delegate timeout and a required quorum of 3 independent sources: groq (openai), openrouter-free (answered as `cohere/north-mini-code:free`) and gemini (google) all answered; 3 sources, quorum met, Arbiter succeeded with a well-formed structure, two declared model families (openai and google), blind prompts clean, 5 ledger rows for 5 requests. The openrouter Critic returned no text (`finish_reason: length`: it spent its 1,500 output tokens thinking), which the adapter now reports as exactly that; the Arbiter still ran. **Scenario 1: PASS** for the delegates and Arbiter; the Critic stage failed on that provider.
 
 The Gemini timing evidence and the conclusion (external latency variability, no application defect found, next check named) are in `docs/RELEASE_EVIDENCE.md`. Billing reconciliation remains **unverified**.
+
+## 2026-11-15: live database upgrade and release-candidate acceptance
+
+- **Upgrade of the owner's database.** After the checkout was moved to `main` at `dba8c59`, the app was started for the first time against the real `conclave.db`. It wrote `conclave.db.bak-0-<timestamp>` (413,696 bytes, the pre-upgrade size) before upgrading; the upgraded file (438,272 bytes) returned `ok` from `PRAGMA integrity_check`, and the console answered HTTP 200. No run history was inspected or altered. The file itself is not in the repository.
+- **Release-candidate acceptance** against real providers on a scratch database: `docs/ACCEPTANCE-2026-11-15.md`.

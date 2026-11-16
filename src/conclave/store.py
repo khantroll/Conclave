@@ -782,8 +782,10 @@ class WorkspaceStore:
             ):
                 activity.setdefault(row["provider"], {})["last_success_at"] = row["at"]
             for row in connection.execute(
-                "SELECT provider, outcome, http_status, MAX(started_at) AS at "
-                "FROM provider_calls WHERE outcome != 'ok' GROUP BY provider"
+                "SELECT provider, outcome, http_status, started_at AS at FROM ("
+                " SELECT provider, outcome, http_status, started_at, ROW_NUMBER() OVER ("
+                "  PARTITION BY provider ORDER BY started_at DESC, rowid DESC) AS rn"
+                " FROM provider_calls WHERE outcome != 'ok') WHERE rn = 1"
             ):
                 entry = activity.setdefault(row["provider"], {})
                 entry["last_failure_at"] = row["at"]

@@ -868,3 +868,24 @@ def test_the_version_is_the_same_everywhere():
     pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text("utf-8"))
     app = create_app(config=ConclaveConfig(), workspace_store=WorkspaceStore(Path("v.db")))
     assert conclave.__version__ == pyproject["project"]["version"] == app.version
+
+
+def test_provider_status_reports_the_latest_failure_not_a_mixture(tmp_path):
+    from conclave.models import CallRow
+
+    store = WorkspaceStore(tmp_path / "f.db")
+
+    def fail(i, at, outcome, status):
+        store.record_call(
+            CallRow(id=i, stage="delegate", provider="p", outcome=outcome, http_status=status, started_at=at)
+        )
+
+    fail("1", "2026-01-01T00:00:00+00:00", "http_error", 429)
+    fail("2", "2026-01-03T00:00:00+00:00", "timeout", None)
+    fail("3", "2026-01-02T00:00:00+00:00", "http_error", 500)
+    seen = store.provider_activity()["p"]
+    assert (seen["last_failure_at"], seen["last_failure_outcome"], seen["last_failure_http_status"]) == (
+        "2026-01-03T00:00:00+00:00",
+        "timeout",
+        None,
+    )

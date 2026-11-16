@@ -19,7 +19,7 @@ A free-tier acceptance run against real providers passed on 2026-11-13 (see `doc
 
 ## Improvements that are not needed for a first release
 
-- Done 2026-11-15 as opt-in options (`docs/CONFIGURATION.md`, "Optional run controls"): a per-run estimated cost ceiling that fails closed, one shared deadline per stage, background runs that return the run id at once, and reserve delegates (one bounded replacement wave). Not yet tried against real providers; the web console does not use background mode.
+- Done 2026-11-15 as opt-in options (`docs/CONFIGURATION.md`, "Optional run controls"): a per-run estimated cost ceiling that fails closed, one shared deadline per stage, background runs that return the run id at once, and reserve delegates (one bounded replacement wave). Not yet tried against real providers; the console offers background mode as a run option.
 - Evaluating the keyword router against hand-labelled past questions.
 - Native provider adapters, and semantic claim extraction.
 

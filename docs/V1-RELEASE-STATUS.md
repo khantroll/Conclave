@@ -7,7 +7,7 @@ Candidate: `1.0.0rc1` on branch `release/v1.0-rc`. Updated 2026-11-15. This file
 | # | Criterion | Result | Evidence |
 |---|---|---|---|
 | 1 | Installation and startup work from a documented clean environment | **PASS** (Windows, Python 3.14); Linux by CI only | Fresh venv from a clean checkout, `pip install -e ".[dev]"`, started with no config, served the console, ran a demo deliberation ( `docs/ACCEPTANCE-2026-11-15.md` §6). `docs/INSTALL.md`. CI runs Ubuntu on 3.11 and 3.14. Not run by hand on Linux. |
-| 2 | Provider configuration works | **PASS** | Eight real provider entries loaded from `conclave.json` plus a wrong-key one; statuses, models, prices and failures reported (acceptance §1). |
+| 2 | Provider configuration works | **PASS** | Seven real provider entries loaded from `conclave.json`, plus one deliberately wrong-key copy; statuses, models, prices and failures reported (acceptance §1). |
 | 3 | A real multi-provider panel executes | **PASS** | Six-delegate, four-family panel with Critic and Arbiter (acceptance §3; `docs/acceptance/2026-11-15/contested.json`). |
 | 4 | Independent quorum accounting is verified | **PASS** | Live: 6 delegates, 4 answered, 4 sources, 4 families, failures excluded. Same-model and router-alias merging by `tests/test_sources.py`, `tests/test_orchestrator.py`, the mock benchmark and the 2026-11-13 live scenario (`docs/TEST_LOG.md`). |
 | 5 | Critic and Arbiter behave as documented | **PASS** | Four parsed sections, citations, dissent shown, blind prompts (no provider or model name in either real judge prompt), overlap recorded (acceptance §3). The Critic stays off by default. |
@@ -16,12 +16,12 @@ Candidate: `1.0.0rc1` on branch `release/v1.0-rc`. Updated 2026-11-15. This file
 | 8 | The GUI supports the complete ordinary workflow | **PASS** | Driven in headless Edge: dashboard, provider table, workspace creation through the form, background run with progress and Cancel, positions, structured synthesis, ledger, history (acceptance §5). Providers are configured in `conclave.json`/`.env`, not in the console (by design). |
 | 9 | Run history and accounting are reliable | **PASS** for ledger and totals; see row 16 for billing | Ledger rows equal calls made; estimated totals equal provider-reported totals for OpenRouter (acceptance §3, §4); unknown cost shown as unknown (`web/render.test.mjs`). |
 | 10 | Security regression tests pass | **PASS** | Full suite includes the adversarial corpus, loopback and CSRF guard (now covering the cancel endpoint), render tests. No secrets or `.env`/db files in any of 318 commits (scan); `pip-audit`: no runtime dependency vulnerabilities. |
-| 11 | Existing data survives migration | **PASS** | The owner's live database was upgraded on 2026-11-15 with a verified backup and `integrity_check = ok`; migration tests in `tests/test_store.py`. |
+| 11 | Existing data survives migration | **PASS** | The owner's live database was upgraded on first start on 2026-11-15: the app wrote its own backup and a read-only `integrity_check` returned `ok` (recorded in `docs/TEST_LOG.md`, 2026-11-15; the database itself is not in the repository). Migration tests in `tests/test_store.py`. The acceptance run used a scratch database. |
 | 12 | Automated tests and CI pass | **PASS** locally; CI on the release branch to be confirmed before merge | 3684 passed at 97% coverage in a clean venv; `ruff` clean; `node --test web/render.test.mjs` 234 pass. CI was green on #43 and #44, whose code this branch contains. |
 | 13 | Live acceptance results are documented | **PASS** | `docs/ACCEPTANCE-2026-11-15.md`, raw outputs and scripts in the repo. |
 | 14 | No release-blocking defects remain | **PASS** (none known) | Non-blocking issues are listed below. |
 | 15 | Documentation matches the implementation | **PASS** | README, `docs/INSTALL.md`, `docs/CONFIGURATION.md`, this file; `tests/test_docs.py` passes. |
-| 16 | The release branch is reviewed and ready to merge or tag | **PASS** for review; merge and tag need the owner | Codex plan review (findings applied), Codex completion reviews of #44 and of this branch. Not merged; not tagged. |
+| 16 | The release branch is reviewed and ready to merge or tag | **PASS** for review; merge and tag need the owner | Codex plan review (findings applied), Codex completion reviews of #44 and of this branch (its five findings were fixed: last-failure query, migration evidence wording, provider count, demo-only wording, a stale console sentence). Not merged; not tagged. |
 
 ## Not verified, and why
 

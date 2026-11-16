@@ -34,7 +34,7 @@ From the directory where you want `conclave.json`, `.env` and `conclave.db` to l
 uvicorn conclave.api:app
 ```
 
-Open `http://127.0.0.1:8000/`. With no configuration, only four built-in `demo-*` providers exist. They return canned text, so they prove the pipeline runs and say nothing about answer quality. The console says "demo only" until you add real providers.
+Open `http://127.0.0.1:8000/`. With no configuration, only four built-in `demo-*` providers exist. They return canned text, so they prove the pipeline runs and say nothing about answer quality. The console says "demo only" while no real provider is configured.
 
 Do not bind it to another address. Conclave has no login; by default it answers only `127.0.0.1`, `localhost` and `[::1]` (see `docs/CONFIGURATION.md`, "Local access").
 
@@ -121,7 +121,7 @@ Optional **Run options** on the question panel: a cost ceiling in USD, a shared 
 
 | What you see | Likely cause and fix |
 |---|---|
-| Console says "demo only" | No `conclave.json` was found in the directory you started from, or its providers failed to load. Start Conclave from the directory that holds it, or set `CONCLAVE_CONFIG_PATH`. |
+| Console says "demo only" | No provider is configured: no `conclave.json` was found in the directory you started from, or it lists none. Start Conclave from the directory that holds it, or set `CONCLAVE_CONFIG_PATH`. A provider that is listed but has no key is not "demo only"; it shows `credentials: missing` in the dashboard. |
 | Provider `credentials` shows `missing` | The environment variable named by `api_key_env` is not set. Check `.env` is in the directory you started from, then restart. |
 | Test returns `auth` (401 or 403) | The key is wrong, expired, or belongs to a different service. |
 | Test or run returns `rate_limit` or `quota` | Free tiers are small (Gemini's free tier allows about 20 requests a day per model; Mistral rate-limits readily). Wait, or use another provider. Conclave retries rate limits a bounded number of times and then reports the failure. |
