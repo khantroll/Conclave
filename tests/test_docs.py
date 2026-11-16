@@ -67,7 +67,9 @@ def test_the_readme_names_the_python_versions_ci_runs():
 def test_the_status_does_not_describe_a_pre_alpha_that_no_longer_exists_or_overclaims():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     status = readme.split("## Status", 1)[1].split("## Limitations", 1)[0]
-    assert "Not released" in status and "2026-10-09" in status
+    assert "Release candidate" in status and "not yet merged" in status.lower()
+    assert "2026-11-15" in status and "V1-RELEASE-STATUS" in status
+    assert "Pre-alpha" not in status
     for stale in ("real-provider MVP pipeline validated", "Manual testing has now produced"):
         assert stale not in readme
 

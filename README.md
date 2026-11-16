@@ -90,11 +90,21 @@ Conclave is a FastAPI service with a vanilla HTML/JS console and a SQLite store.
 - Loopback-only guard, secret redaction in stored provider errors, per-run marker tokens, bounded and escaped model text, and a console that renders model text as inert text.
 - An adversarial suite (about 50 hostile texts in 11 classes through every route model text can take), a mock benchmark of thirteen invariants, unit and API tests, and CI. The Python tests and a Node test of the console's rendering all run in CI.
 
-**Not built yet**: native provider adapters, a spending ceiling, a shared stage deadline, live progress while a run is going, a measured Critic default, and any measurement of whether a panel beats a single model. See [Status](#status) and [Limitations](#limitations).
+**Run controls (opt-in, off by default)**
+- A per-run estimated cost ceiling that fails closed, a shared deadline for Critic and Arbiter fallbacks, reserve delegates (one bounded replacement wave), and background runs with cancel. See [Optional run controls](docs/CONFIGURATION.md).
+
+**Console**
+- A dashboard, a provider table with last success and failure, workspace forms, run options, progress and cancel for background runs, the positions table, the structured synthesis, delegate cards, a call ledger view, run history and JSON export.
+
+**Not built yet**: native provider adapters, a measured Critic default, and any measurement of whether a panel beats a single model. See [Status](#status) and [Limitations](#limitations).
 
 ## The Critic has no default
 
 Whether adding a Critic stage improves the Arbiter's answer is unmeasured, so Conclave does not choose for you. Saving a workspace requires an explicit `critic`: a provider name, or `null` for no Critic (the API returns 422 otherwise, and the console form requires a choice). Existing workspaces keep working unchanged. [`bench/judge/`](bench/judge/README.md) holds a paid benchmark (24 cases, real judge models, two arms, a decision rule fixed in advance) that will settle it. Screening runs on two judge models from different families (`qwen/qwen3.7-flash`, `deepseek/deepseek-chat-v3-0324` and `anthropic/claude-sonnet-4.6`, 144 of 144 trials each, two Arbiter prompts for the first two) are all "default off" by the fixed rule: the Critic arm moved between -1.3 and +1.3 points, under the +3 line, and was slightly worse with the strongest judge (Sonnet, whose Arbiter alone scored 99.4%). The same model played Critic and Arbiter in those sets; a sixth set with a different, cheap model as Critic (`mistral-nemo` under a qwen Arbiter, 144 of 144 trials) was also "default off" (-1.9 points). These are screening results, so Conclave still has no default and the workspace must choose. A third judge (groq, free tier) has 6 of 144 trials and no decision. See [`bench/judge/RESULTS.md`](bench/judge/RESULTS.md).
+
+## Install and first run
+
+See [docs/INSTALL.md](docs/INSTALL.md) for Windows and Linux installation, provider configuration, the first panel and troubleshooting.
 
 ## Development
 
@@ -178,13 +188,13 @@ A failed provider never fails the session, and the Critic and Arbiter are told e
 
 ## Status
 
-**Pre-alpha. Not released, and no version has been tagged.**
+**Release candidate `1.0.0rc1`. Not yet merged to the release line or tagged.** The criteria, their evidence and what remains are in [docs/V1-RELEASE-STATUS.md](docs/V1-RELEASE-STATUS.md).
 
 The orchestration, source counting, blinding, structured output, ledger, retry chains and storage described above are implemented and covered by the tests and benchmarks in this repository. What has **not** happened:
 
-- **Real-provider acceptance is partial.** A run against free groq, OpenRouter, Gemini and Mistral keys on 2026-11-13 passed the wrong-key, fallback, duplicate-source, interruption, retry-chain, blinding and three-provider scenarios (`docs/TEST_LOG.md`), but Mistral and Gemini were rate-limited or too slow in several runs, and the ledger has **not** been reconciled against any provider's billing page. Before that, the last live run was 2026-10-09.
+- **Real-provider acceptance** ran on 2026-11-13 (free keys) and again on 2026-11-15 against the release candidate (`docs/ACCEPTANCE-2026-11-15.md`). Mistral and Gemini free tiers are small and rate-limited, so they were exercised only lightly.
 - **The Critic's value is unmeasured**, and so is whether a panel beats a single strong model. Both need paid benchmarks that have not been run.
-- Costs have never been reconciled against a provider's own usage or billing page.
+- Costs have not been reconciled against a provider's own usage or billing page; the owner states billing is fine, which is not a check.
 
 ## Limitations
 

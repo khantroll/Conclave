@@ -735,3 +735,157 @@ def test_workspace_with_two_delegates_of_one_config_saves_with_a_warning(tmp_pat
     assert replaced["warnings"] == []
     clean = _post(client, "/api/workspaces", {**body, "name": "w2", "delegates": ["one", "three"]}, 201)
     assert clean.json()["warnings"] == []
+
+
+def test_reserve_delegates_are_validated(client):
+    base = {"question": "q", "delegates": ["demo-a"], "arbiter": "demo-arbiter"}
+    dup = client.post("/api/deliberate", json={**base, "reserve_delegates": ["demo-a"]})
+    assert dup.status_code == 422 and "already on the panel" in dup.json()["detail"]
+    unknown = client.post("/api/deliberate", json={**base, "reserve_delegates": ["nope"]})
+    assert unknown.status_code == 422 and "Unknown provider" in unknown.json()["detail"]
+    twice = client.post("/api/deliberate", json={**base, "reserve_delegates": ["demo-b", "demo-b"]})
+    assert twice.status_code == 422
+
+
+def test_reserves_are_recorded_with_the_run_request(client):
+    body = {
+        "question": "q",
+        "delegates": ["demo-a"],
+        "arbiter": "demo-arbiter",
+        "reserve_delegates": ["demo-b"],
+        "shared_stage_deadline": True,
+    }
+    response = client.post("/api/deliberate", json=body)
+    assert response.status_code == 200
+    run = client.get(f"/api/runs/{response.headers['X-Conclave-Run-ID']}").json()
+    assert run["request"]["reserve_delegates"] == ["demo-b"]
+    assert run["request"]["shared_stage_deadline"] is True
+
+
+def test_a_cost_ceiling_is_refused_up_front_when_a_cost_cannot_be_bounded(client):
+    body = {
+        "question": "q",
+        "delegates": ["demo-a"],
+        "arbiter": "demo-arbiter",
+        "max_estimated_cost_usd": 1.0,
+    }
+    response = client.post("/api/deliberate", json=body)
+    assert response.status_code == 422
+    assert "demo-a" in response.json()["detail"] and "Cannot bound" in response.json()["detail"]
+    assert client.get("/api/runs").json() == []  # nothing was started
+    assert client.post("/api/deliberate", json={**body, "max_estimated_cost_usd": 0}).status_code == 422
+
+
+def _slow(monkeypatch, seconds):
+    import asyncio
+
+    from conclave.providers.fake import FakeProvider
+
+    original = FakeProvider.ask
+
+    async def slow(self, prompt):
+        await asyncio.sleep(seconds)
+        return await original(self, prompt)
+
+    monkeypatch.setattr(FakeProvider, "ask", slow)
+
+
+def _wait_for(client, run_id, status, tries=100):
+    import time
+
+    for _ in range(tries):
+        run = client.get(f"/api/runs/{run_id}").json()
+        if run["status"] == status:
+            return run
+        time.sleep(0.05)
+    raise AssertionError(f"run never reached {status}: {run['status']}")
+
+
+BODY = {"question": "q", "delegates": ["demo-a", "demo-b"], "arbiter": "demo-arbiter"}
+
+
+def test_background_mode_returns_the_run_id_at_once_and_the_run_completes(tmp_path, monkeypatch):
+    _slow(monkeypatch, 0.2)
+    with TestClient(make_app(WorkspaceStore(tmp_path / "bg.db"))) as client:
+        response = client.post("/api/deliberate?background=true", json=BODY)
+        assert response.status_code == 202
+        run_id = response.json()["run_id"]
+        assert response.headers["X-Conclave-Run-ID"] == run_id
+        assert client.get(f"/api/runs/{run_id}").json()["status"] == "running"
+        done = _wait_for(client, run_id, "complete")
+        assert done["result"]["arbiter"]["status"] == "succeeded"
+        assert client.post(f"/api/runs/{run_id}/cancel").status_code == 409  # nothing to stop
+
+
+def test_a_background_run_can_be_cancelled_and_is_marked_interrupted(tmp_path, monkeypatch):
+    _slow(monkeypatch, 5)
+    with TestClient(make_app(WorkspaceStore(tmp_path / "bg2.db"))) as client:
+        run_id = client.post("/api/deliberate?background=true", json=BODY).json()["run_id"]
+        cancelled = client.post(f"/api/runs/{run_id}/cancel")
+        assert cancelled.status_code == 202
+        assert client.get(f"/api/runs/{run_id}").json()["status"] == "interrupted"
+        assert client.post(f"/api/runs/{run_id}/cancel").status_code == 409
+
+
+def test_the_default_still_waits_for_the_whole_run(client):
+    response = client.post("/api/deliberate", json=BODY)
+    assert response.status_code == 200 and response.json()["arbiter"]["status"] == "succeeded"
+
+
+def test_provider_status_reports_unknowns_as_unknown(client):
+    rows = {r["name"]: r for r in client.get("/api/providers/status").json()}
+    demo = rows["demo-a"]
+    assert demo["source"] == "demo" and demo["last_success_at"] is None
+    assert demo["quota_remaining"] is None and demo["context_window_tokens"] is None
+    assert demo["input_cost_per_million"] is None  # unknown, not 0
+    assert "api_key" not in str(rows).lower()
+
+
+def test_provider_status_learns_last_success_from_the_ledger(client):
+    assert client.post("/api/providers/demo-a/test").status_code == 200
+    rows = {r["name"]: r for r in client.get("/api/providers/status").json()}
+    assert rows["demo-a"]["last_success_at"] is not None
+    assert rows["demo-b"]["last_success_at"] is None
+
+
+def test_dashboard_has_recent_runs_cost_and_background_list(client):
+    body = {"question": "q", "delegates": ["demo-a"], "arbiter": "demo-arbiter"}
+    assert client.post("/api/deliberate", json=body).status_code == 200
+    dash = client.get("/api/dashboard").json()
+    assert len(dash["recent_runs"]) == 1 and dash["running_in_background"] == []
+    assert dash["cost_last_7_days"]["total_calls"] >= 1
+
+
+def test_the_version_is_the_same_everywhere():
+    import tomllib
+    from pathlib import Path
+
+    import conclave
+    from conclave.api import create_app
+    from conclave.config import ConclaveConfig
+    from conclave.store import WorkspaceStore  # noqa: F401
+
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text("utf-8"))
+    app = create_app(config=ConclaveConfig(), workspace_store=WorkspaceStore(Path("v.db")))
+    assert conclave.__version__ == pyproject["project"]["version"] == app.version
+
+
+def test_provider_status_reports_the_latest_failure_not_a_mixture(tmp_path):
+    from conclave.models import CallRow
+
+    store = WorkspaceStore(tmp_path / "f.db")
+
+    def fail(i, at, outcome, status):
+        store.record_call(
+            CallRow(id=i, stage="delegate", provider="p", outcome=outcome, http_status=status, started_at=at)
+        )
+
+    fail("1", "2026-01-01T00:00:00+00:00", "http_error", 429)
+    fail("2", "2026-01-03T00:00:00+00:00", "timeout", None)
+    fail("3", "2026-01-02T00:00:00+00:00", "http_error", 500)
+    seen = store.provider_activity()["p"]
+    assert (seen["last_failure_at"], seen["last_failure_outcome"], seen["last_failure_http_status"]) == (
+        "2026-01-03T00:00:00+00:00",
+        "timeout",
+        None,
+    )

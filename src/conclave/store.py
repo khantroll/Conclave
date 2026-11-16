@@ -768,6 +768,43 @@ class WorkspaceStore:
             for row in rows
         ]
 
+    def provider_activity(self) -> dict[str, dict]:
+        """Per provider, from the ledger: the last ok call and the last failed call.
+
+        Only what the ledger recorded. A provider with no rows has no activity, which is
+        reported as such and never as healthy.
+        """
+        activity: dict[str, dict] = {}
+        with closing(self._connect()) as connection:
+            for row in connection.execute(
+                "SELECT provider, MAX(started_at) AS at FROM provider_calls "
+                "WHERE outcome = 'ok' GROUP BY provider"
+            ):
+                activity.setdefault(row["provider"], {})["last_success_at"] = row["at"]
+            for row in connection.execute(
+                "SELECT provider, outcome, http_status, started_at AS at FROM ("
+                " SELECT provider, outcome, http_status, started_at, ROW_NUMBER() OVER ("
+                "  PARTITION BY provider ORDER BY started_at DESC, rowid DESC) AS rn"
+                " FROM provider_calls WHERE outcome != 'ok') WHERE rn = 1"
+            ):
+                entry = activity.setdefault(row["provider"], {})
+                entry["last_failure_at"] = row["at"]
+                entry["last_failure_outcome"] = row["outcome"]
+                entry["last_failure_http_status"] = row["http_status"]
+        return activity
+
+    def ledger_overview(self, since_iso: str) -> CostSummary | None:
+        """Totals over every ledger row since a time (UTC ISO string); None when there are none."""
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT * FROM provider_calls WHERE started_at >= ?", (since_iso,)
+            ).fetchall()
+        calls = [
+            CallRow.model_validate({**dict(r), "possibly_billed": bool(r["possibly_billed"])})
+            for r in rows
+        ]
+        return summarize(calls) if calls else None
+
     def chain_root_of(self, run_id: str) -> str:
         """The root of the retry chain a run belongs to (the run itself when it is not a retry,
         or is unknown)."""

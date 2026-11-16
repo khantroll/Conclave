@@ -107,6 +107,9 @@ class DelegateResult(BaseModel):
     prior_attempts: list[PriorAttempt] = Field(default_factory=list)
     # The provider as configured when this answer was produced (None on older results).
     provenance: ProviderProvenance | None = None
+    # True for a reserve delegate: one called in the single replacement wave because the
+    # first panel fell short of the quorum.
+    reserve: bool = False
 
 
 class QuorumReport(BaseModel):
@@ -234,6 +237,15 @@ class DeliberationRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
     critic_timeout_seconds: float = Field(default=60.0, gt=0)
     arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
+    # Off by default: each fallback provider gets its own full timeout. When on, a Critic or
+    # Arbiter stage (primary plus fallbacks) shares one budget of that stage's timeout.
+    shared_stage_deadline: bool = False
+    # Off by default. When set, a provider call is refused unless its pessimistic estimated cost
+    # fits under this many USD for the run (see conclave.budget). Estimated, never billed.
+    max_estimated_cost_usd: float | None = Field(default=None, gt=0)
+    # Providers held back for one bounded replacement wave. Used only if the first panel
+    # leaves the quorum unmet; never more than one wave, never more than the sources missing.
+    reserve_delegates: list[str] = Field(default_factory=list)
     # Random per-run seed. Marker tokens in judge prompts derive from it, and every retry
     # in a chain reuses it, so stored runs rebuild their prompts byte for byte.
     seed: str | None = None
@@ -276,6 +288,8 @@ class DeliberationResult(BaseModel):
     arbiter_structure: ArbiterStructure | None = None
     # Cost of the calls made by THIS run (a retry's own calls), from the call ledger.
     cost: CostSummary | None = None
+    # "cost_ceiling" when at least one call was refused because of the run's cost ceiling.
+    stopped_reason: Literal["cost_ceiling"] | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -313,6 +327,10 @@ class WorkspaceDeliberationRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
     critic_timeout_seconds: float = Field(default=60.0, gt=0)
     arbiter_timeout_seconds: float = Field(default=90.0, gt=0)
+    shared_stage_deadline: bool = False
+    # Use the workspace's delegates that were not picked for this run as reserves.
+    use_reserves: bool = False
+    max_estimated_cost_usd: float | None = Field(default=None, gt=0)
 
 
 class DeliberationRun(BaseModel):
