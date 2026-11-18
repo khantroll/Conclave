@@ -6,6 +6,15 @@ Conclave is a personal, single-user, local AI orchestration console. A user asks
 
 The goal is not to create an autonomous swarm. Conclave is intentionally a **deterministic, inspectable pipeline**, and every model output is treated as untrusted data.
 
+## Status: finished
+
+Conclave is finished and this repository is archived (read-only).
+
+- **What it does:** sends one question to several models in parallel, keeps every raw answer, counts which answers are truly independent, and has a blind Critic and Arbiter judge them, with dissent and cost shown.
+- **v1 works:** version 1.0.0 was released on 2026-11-16 with the full test suite and acceptance checks passing. See [docs/V1-RELEASE-STATUS.md](docs/V1-RELEASE-STATUS.md).
+- **What the benchmark found:** on the verified hard set, a panel of cheaper models only tied one strong model (24/26 each), though it beat each of its own members alone. On a third set the strong model scored 48/48 and the panel 40/48. So there is no evidence that a panel beats the strongest single model. See [bench/panel/HARD-RESULTS.md](bench/panel/HARD-RESULTS.md) and [bench/panel/SET3-RESULTS.md](bench/panel/SET3-RESULTS.md).
+- **Panel work is paused** (since 2026-11-15). Resuming it would need questions the strong model fails some of the time.
+
 ## Why Conclave?
 
 Using several AI systems can produce better perspective, but the human often ends up doing the tedious work:
